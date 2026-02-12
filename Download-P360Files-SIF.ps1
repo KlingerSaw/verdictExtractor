@@ -318,7 +318,7 @@ if (-not $OutputDir) { $OutputDir = ".\prod_downloads" }
 if (-not $MarkdownDir) { $MarkdownDir = ".\prod_markdown" }
 if (-not $ContactRecno) { $ContactRecno = 100016 }
 if (-not $TitleFilter) { $TitleFilter = "Afgørelse af%" }
-if (-not $MaxReturnedDocuments -or $MaxReturnedDocuments -lt 1) { $MaxReturnedDocuments = 100 }
+if (-not $MaxReturnedDocuments -or $MaxReturnedDocuments -lt 0) { $MaxReturnedDocuments = 0 }
 if (-not $MaxFilesToProcess -or $MaxFilesToProcess -lt 0) { $MaxFilesToProcess = 0 }
 
 Write-Host ""
@@ -360,8 +360,12 @@ if ($MaxFilesToProcess -gt 0) {
 }
 Write-Host ""
 
-$requestedDocumentLimit = $MaxReturnedDocuments
-if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $requestedDocumentLimit) {
+$requestedDocumentLimit = 0
+if ($MaxReturnedDocuments -gt 0) {
+    $requestedDocumentLimit = $MaxReturnedDocuments
+}
+
+if ($MaxFilesToProcess -gt 0 -and ($requestedDocumentLimit -eq 0 -or $MaxFilesToProcess -lt $requestedDocumentLimit)) {
     $requestedDocumentLimit = $MaxFilesToProcess
 }
 
@@ -409,7 +413,11 @@ if (-not $convertOnly) {
     Write-Host "[+] AuthKey: $maskedKey" -ForegroundColor Green
     Write-Host "[+] ContactRecno: $ContactRecno" -ForegroundColor Green
     Write-Host "[+] Title filter: $TitleFilter" -ForegroundColor Green
-    Write-Host "[+] Maks dokumenter i alt: $requestedDocumentLimit" -ForegroundColor Green
+    if ($requestedDocumentLimit -gt 0) {
+        Write-Host "[+] Maks dokumenter i alt: $requestedDocumentLimit" -ForegroundColor Green
+    } else {
+        Write-Host "[+] Maks dokumenter i alt: Alle" -ForegroundColor Green
+    }
     Write-Host "[+] API hentes i chunks af maks: $apiPageChunkSize" -ForegroundColor Green
     Write-Host "[+] Filtype: $FileType" -ForegroundColor Green
     Write-Host ""
@@ -438,11 +446,7 @@ if (-not $convertOnly) {
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    $effectiveMaxReturnedDocuments = $MaxReturnedDocuments
-    if ($effectiveMaxReturnedDocuments -gt 100) {
-        $effectiveMaxReturnedDocuments = 100
-        Write-Host "[*] MaxReturnedDocuments er over 100. Henter i batches af 100 pr. side." -ForegroundColor Yellow
-    }
+    $effectiveMaxReturnedDocuments = $apiPageChunkSize
 
     if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
         $effectiveMaxReturnedDocuments = $MaxFilesToProcess
@@ -558,7 +562,7 @@ function Invoke-GetDocumentsPage {
         Write-Host "[!] API returnerede 0 dokumenter med Title-filter. Proever igen uden server-side title-filter..." -ForegroundColor Yellow
 
         try {
-            $fallbackPageSize = [Math]::Min($apiPageChunkSize, $targetDocumentCount)
+            $fallbackPageSize = if ($targetDocumentCount -gt 0) { [Math]::Min($apiPageChunkSize, $targetDocumentCount) } else { $apiPageChunkSize }
             $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter "" -MaxReturnedDocuments $fallbackPageSize
             $docsNoTitle = $resultNoTitle.Documents
             Write-Host "[+] Uden server-side title-filter fandt API $($docsNoTitle.Count) dokumenter paa side 0" -ForegroundColor Green

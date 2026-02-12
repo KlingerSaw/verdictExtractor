@@ -519,24 +519,11 @@ while ($hasMorePages) {
         Write-Host "[*] Kalder API (side $page, antal $currentPageSize)..." -ForegroundColor Yellow
     } else {
         Write-Host "[*] Henter side $page (antal $currentPageSize)..." -ForegroundColor Yellow
-    $remainingDocuments = $targetDocumentCount - $allDocuments.Count
-    if ($remainingDocuments -le 0) {
-        $hasMorePages = $false
-        break
-    }
-
-    $pageSize = [Math]::Min($apiPageChunkSize, $remainingDocuments)
-
-    if ($page -eq 0) {
-        Write-Host "[*] Kalder API (side $page, antal $pageSize)..." -ForegroundColor Yellow
-    } else {
-        Write-Host "[*] Henter side $page (antal $pageSize)..." -ForegroundColor Yellow
     }
 
     # Call API
     try {
         $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $currentPageSize
-        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $pageSize
         $response = $result.Response
         $pageDocuments = $result.Documents
         
@@ -551,7 +538,6 @@ while ($hasMorePages) {
             } else {
                 # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
                 if ($pageDocuments.Count -ge $currentPageSize) {
-                if ($pageDocuments.Count -ge $pageSize) {
                     $page++
                 } else {
                     $hasMorePages = $false

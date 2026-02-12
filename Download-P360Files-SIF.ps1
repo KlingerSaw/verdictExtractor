@@ -8,7 +8,8 @@ param(
     [string]$MarkdownDir,
     [string]$AuthKey,
     [int]$ContactRecno,
-    [string]$TitleFilter
+    [string]$TitleFilter,
+    [int]$MaxReturnedDocuments
 )
 
 # Set console encoding to UTF-8 for Danish characters
@@ -150,22 +151,40 @@ function Build-MarkdownHeader {
         $documentUrl = $FileInfo.SourceUrl
     }
 
-    $markdown = "# $($FileInfo.DocumentTitle)`n`n"
-    $markdown += "**Dokument:** $($FileInfo.DocumentNumber)`n"
-    $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
-    $markdown += "**Format:** $FormatLabel`n"
+    $metadataLines = @(
+        "document_title: '$($FileInfo.DocumentTitle -replace "'", "''")'",
+        "document_number: '$($FileInfo.DocumentNumber -replace "'", "''")'",
+        "case_number: '$($FileInfo.CaseNumber -replace "'", "''")'",
+        "format: '$($FormatLabel -replace "'", "''")'"
+    )
 
     if ($FileInfo.FileRecno) {
-        $markdown += "**Fil-id:** $($FileInfo.FileRecno)`n"
+        $metadataLines += "file_recno: '$($FileInfo.FileRecno -replace "'", "''")'"
     }
 
     if ($FileInfo.SourceUrl) {
-        $markdown += "**Kilde URL (SIF):** $($FileInfo.SourceUrl)`n"
+        $metadataLines += "source_url: '$($FileInfo.SourceUrl -replace "'", "''")'"
     }
 
     if ($FileInfo.ResponseContentType) {
-        $markdown += "**Content-Type:** $($FileInfo.ResponseContentType)`n"
+        $metadataLines += "response_content_type: '$($FileInfo.ResponseContentType -replace "'", "''")'"
     }
+
+    if ($FileInfo.DocumentLink) {
+        $metadataLines += "document_link: '$($FileInfo.DocumentLink -replace "'", "''")'"
+    }
+
+    if ($FileInfo.CaseLink) {
+        $metadataLines += "case_link: '$($FileInfo.CaseLink -replace "'", "''")'"
+    }
+
+    $markdown = "---`n"
+    $markdown += ($metadataLines -join "`n") + "`n"
+    $markdown += "---`n`n"
+    $markdown += "# $($FileInfo.DocumentTitle)`n`n"
+    $markdown += "**Dokument:** $($FileInfo.DocumentNumber)`n"
+    $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
+    $markdown += "**Format:** $FormatLabel`n"
 
     if ($documentUrl -or $FileInfo.CaseLink) {
         $markdown += "**P360 Links:**`n"
@@ -292,6 +311,7 @@ if (-not $OutputDir) { $OutputDir = ".\prod_downloads" }
 if (-not $MarkdownDir) { $MarkdownDir = ".\prod_markdown" }
 if (-not $ContactRecno) { $ContactRecno = 100016 }
 if (-not $TitleFilter) { $TitleFilter = "Afgørelse af%" }
+if (-not $MaxReturnedDocuments -or $MaxReturnedDocuments -lt 1) { $MaxReturnedDocuments = 100 }
 
 Write-Host ""
 Write-Host "====================================================================" -ForegroundColor Cyan
@@ -354,6 +374,7 @@ if (-not $convertOnly) {
     Write-Host "[+] AuthKey: $maskedKey" -ForegroundColor Green
     Write-Host "[+] ContactRecno: $ContactRecno" -ForegroundColor Green
     Write-Host "[+] Title filter: $TitleFilter" -ForegroundColor Green
+    Write-Host "[+] MaxReturnedDocuments pr. side: $MaxReturnedDocuments" -ForegroundColor Green
     Write-Host "[+] Filtype: $FileType" -ForegroundColor Green
     Write-Host ""
 } # End if not convertOnly (config section)
@@ -389,11 +410,13 @@ function Invoke-GetDocumentsPage {
         [string]$ApiUrl,
         [int]$Page,
         [int]$ContactRecno,
-        [string]$TitleFilter
+        [string]$TitleFilter,
+        [int]$MaxReturnedDocuments
     )
 
     $parameter = @{
         Page = $Page
+        MaxReturnedDocuments = $MaxReturnedDocuments
         IncludeCustomFields = "false"
         ContactRecnos = @($ContactRecno)
     }
@@ -435,7 +458,7 @@ while ($hasMorePages) {
 
     # Call API
     try {
-        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter
+        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $MaxReturnedDocuments
         $response = $result.Response
         $pageDocuments = $result.Documents
         
@@ -443,8 +466,8 @@ while ($hasMorePages) {
             Write-Host "    Modtaget $($pageDocuments.Count) dokumenter" -ForegroundColor Gray
             $allDocuments += $pageDocuments
             
-            # Check if there are more pages (API returns 100 per page)
-            if ($pageDocuments.Count -eq 100) {
+            # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
+            if ($pageDocuments.Count -ge $MaxReturnedDocuments) {
                 $page++
             } else {
                 $hasMorePages = $false
@@ -467,7 +490,7 @@ if ($allDocuments.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($TitleFilte
     Write-Host "[!] API returnerede 0 dokumenter med Title-filter. Prøver igen uden server-side title-filter..." -ForegroundColor Yellow
 
     try {
-        $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter ""
+        $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter "" -MaxReturnedDocuments $MaxReturnedDocuments
         $docsNoTitle = $resultNoTitle.Documents
         Write-Host "[+] Uden server-side title-filter fandt API $($docsNoTitle.Count) dokumenter på side 0" -ForegroundColor Green
 

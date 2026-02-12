@@ -565,8 +565,8 @@ if ($FileType -eq 'word') {
 $filesToDownload = @()
 $skipped = 0
 $skipReasons = @{}
-$decisionTitlePattern = '(^Afg.relse af)|(^\d{2}[-_/]\d{5}\s+Afg.relse$)'
-$decisionFileTitlePattern = '(^Afg.relse)|(^\d{2}[-_/]\d{5}\s+Afg.relse$)'
+$decisionTitlePattern = '^Afg.relse af'
+$decisionFileTitlePattern = 'Afg.relse'
 
 foreach ($doc in $allDocuments) {
     $docRecno = $doc.Recno
@@ -585,10 +585,10 @@ foreach ($doc in $allDocuments) {
     $skipDoc = $false
     $skipReason = ""
 
-    # Rule 1: Must be either "Afgørelse af..." or "XX-YYYYY Afgørelse"
+    # Rule 1: Document title must start with "Afgørelse af"
     if ($docTitle -notmatch $decisionTitlePattern) {
         $skipDoc = $true
-        $skipReason = "Titel!=Afgørelse format"
+        $skipReason = "Titel starter ikke med Afgørelse af"
     }
 
     # Rule 2: Check klassifikation
@@ -645,10 +645,10 @@ foreach ($doc in $allDocuments) {
                 continue
             }
 
-            # Rule 5: File title from SIF must be either "Afgørelse..." or "XX-YYYYY Afgørelse"
+            # Rule 5: File title from SIF must contain "Afgørelse"
             if ($fileTitle -notmatch $decisionFileTitlePattern) {
                 $skipped++
-                $reason = "Filnavn!=Afgørelse format"
+                $reason = "Filnavn mangler Afgørelse"
                 if (-not $skipReasons.ContainsKey($reason)) {
                     $skipReasons[$reason] = 0
                 }

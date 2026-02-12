@@ -209,7 +209,8 @@ elseif ($FileType -eq 'pdf') { $allowedExtensions = @('PDF') }
 $filesToDownload = @()
 $skipped = 0
 $skipReasons = @{}
-$decisionTitlePattern = '(^Afg.relse af)|(^\d{2}[-_/]\d{5}\s+Afg.relse$)'
+$decisionTitlePattern = '^Afg.relse af'
+$decisionFileNamePattern = 'Afg.relse'
 
 foreach ($row in $data) {
     # Extract fields
@@ -229,10 +230,10 @@ foreach ($row in $data) {
     $skip = $false
     $skipReason = ""
     
-    # Rule 1: Must be either "Afgørelse af..." or "XX-YYYYY Afgørelse"
+    # Rule 1: Document title must start with "Afgørelse af"
     if ($docName -notmatch $decisionTitlePattern) {
         $skip = $true
-        $skipReason = "Titel!=Afgørelse format"
+        $skipReason = "Titel starter ikke med Afgørelse af"
     }
     
     # Rule 2: Check klassifikation
@@ -266,6 +267,12 @@ foreach ($row in $data) {
         $skip = $true
         $skipReason = "Extension=$extension"
     }
+
+    # Rule 6: Filename must contain "Afgørelse"
+    if (-not $skip -and $fileName -notmatch $decisionFileNamePattern) {
+        $skip = $true
+        $skipReason = "Filnavn mangler Afgørelse"
+    }
     
     # Extract numeric FileID
     $fileId = ""
@@ -275,7 +282,7 @@ foreach ($row in $data) {
         $fileId = $Matches[1]
     }
     
-    # Rule 6: Must have numeric FileID
+    # Rule 7: Must have numeric FileID
     if (-not $skip -and -not ($fileId -match '^\d+$')) {
         $skip = $true
         $skipReason = "FileID=ugyldig"

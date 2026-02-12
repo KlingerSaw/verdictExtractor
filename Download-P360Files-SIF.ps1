@@ -60,6 +60,7 @@ if (-not $convertOnly) {
     if (-not $AuthKey) {
         $AuthKey = Read-Host "P360 AuthKey"
     }
+    $AuthKey = $AuthKey.Trim()
 
     # Prompt for filetype if not specified
     if (-not $FileType -or $FileType -eq 'both') {
@@ -74,12 +75,8 @@ if (-not $convertOnly) {
         else { $FileType = 'both' }
     }
 
-    # Mask AuthKey for display
-    $maskedKey = if ($AuthKey.Length -gt 8) { 
-        $AuthKey.Substring(0, 8) + "****" 
-    } else { 
-        "****" 
-    }
+    # Mask AuthKey for display (never print partial key)
+    $maskedKey = "****"
 
     Write-Host ""
     Write-Host "[+] Miljoe: $Environment" -ForegroundColor Green
@@ -112,20 +109,49 @@ if (-not $convertOnly) {
     # Build API request with pagination
 $apiUrl = "$baseUrl/DocumentService/GetDocuments?authkey=$AuthKey"
 
+function Invoke-GetDocumentsPage {
+    param(
+        [string]$ApiUrl,
+        [int]$Page,
+        [int]$ContactRecno,
+        [string]$TitleFilter
+    )
+
+    $parameter = @{
+        Page = $Page
+        IncludeCustomFields = "false"
+        ContactRecnos = @($ContactRecno)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($TitleFilter)) {
+        $parameter.Title = $TitleFilter
+    }
+
+    $requestBody = @{ parameter = $parameter } | ConvertTo-Json -Depth 10
+    $requestBodyBytes = [System.Text.Encoding]::UTF8.GetBytes($requestBody)
+
+    $response = Invoke-RestMethod -Uri $ApiUrl -Method Post -Body $requestBodyBytes -ContentType "application/json; charset=utf-8"
+
+    if ($null -eq $response.Successful) {
+        throw "API response mangler feltet 'Successful'."
+    }
+
+    if ($response.Successful -eq $false) {
+        throw "API kald fejlede. ErrorMessage='$($response.ErrorMessage)' ErrorDetails='$($response.ErrorDetails)'"
+    }
+
+    $docs = @($response.Documents)
+    return @{
+        Response = $response
+        Documents = $docs
+    }
+}
+
 $allDocuments = @()
 $page = 0
 $hasMorePages = $true
 
 while ($hasMorePages) {
-    $requestBody = @{
-        parameter = @{
-            Page = $page
-            IncludeCustomFields = "false"
-            ContactRecnos = @($ContactRecno)
-            Title = $TitleFilter
-        }
-    } | ConvertTo-Json -Depth 10
-
     if ($page -eq 0) {
         Write-Host "[*] Kalder API (side $page)..." -ForegroundColor Yellow
     } else {
@@ -134,17 +160,9 @@ while ($hasMorePages) {
 
     # Call API
     try {
-        $response = Invoke-RestMethod -Uri $apiUrl -Method Post -Body $requestBody -ContentType "application/json"
-        
-        if ($response.Successful -eq $false) {
-            Write-Host "FEJL: API kald fejlede" -ForegroundColor Red
-            Write-Host "ErrorMessage: $($response.ErrorMessage)" -ForegroundColor Red
-            Write-Host "ErrorDetails: $($response.ErrorDetails)" -ForegroundColor Red
-            pause
-            exit 1
-        }
-        
-        $pageDocuments = $response.Documents
+        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter
+        $response = $result.Response
+        $pageDocuments = $result.Documents
         
         if ($pageDocuments -and $pageDocuments.Count -gt 0) {
             Write-Host "    Modtaget $($pageDocuments.Count) dokumenter" -ForegroundColor Gray
@@ -165,6 +183,24 @@ while ($hasMorePages) {
         Write-Host $_.Exception.Message -ForegroundColor Red
         pause
         exit 1
+    }
+}
+
+# Retry once without Title filter if nothing was returned
+if ($allDocuments.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($TitleFilter)) {
+    Write-Host "[!] API returnerede 0 dokumenter med Title-filter. Prøver igen uden server-side title-filter..." -ForegroundColor Yellow
+
+    try {
+        $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter ""
+        $docsNoTitle = $resultNoTitle.Documents
+        Write-Host "[+] Uden server-side title-filter fandt API $($docsNoTitle.Count) dokumenter på side 0" -ForegroundColor Green
+
+        if ($docsNoTitle.Count -gt 0) {
+            Write-Host "[+] Fortsaetter med resultater uden server-side title-filter (lokal filtrering bevares)" -ForegroundColor Green
+            $allDocuments = $docsNoTitle
+        }
+    } catch {
+        Write-Host "[!] Retry uden title-filter fejlede: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
 

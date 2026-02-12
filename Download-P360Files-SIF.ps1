@@ -139,6 +139,152 @@ function Get-CaseBasedFilename {
     }
 }
 
+function Build-MarkdownHeader {
+    param(
+        [hashtable]$FileInfo,
+        [string]$FormatLabel
+    )
+
+    $documentUrl = $FileInfo.DocumentLink
+    if ($FileInfo.SourceUrl) {
+        $documentUrl = $FileInfo.SourceUrl
+    }
+
+    $markdown = "# $($FileInfo.DocumentTitle)`n`n"
+    $markdown += "**Dokument:** $($FileInfo.DocumentNumber)`n"
+    $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
+    $markdown += "**Format:** $FormatLabel`n"
+
+    if ($FileInfo.FileRecno) {
+        $markdown += "**Fil-id:** $($FileInfo.FileRecno)`n"
+    }
+
+    if ($FileInfo.SourceUrl) {
+        $markdown += "**Kilde URL (SIF):** $($FileInfo.SourceUrl)`n"
+    }
+
+    if ($FileInfo.ResponseContentType) {
+        $markdown += "**Content-Type:** $($FileInfo.ResponseContentType)`n"
+    }
+
+    if ($documentUrl -or $FileInfo.CaseLink) {
+        $markdown += "**P360 Links:**`n"
+        if ($documentUrl) {
+            $markdown += "- [Åbn dokument]($documentUrl)`n"
+        }
+        if ($FileInfo.DocumentLink) {
+            $markdown += "- [Dokumentkort]($($FileInfo.DocumentLink))`n"
+        }
+        if ($FileInfo.CaseLink) {
+            $markdown += "- [Sagskort]($($FileInfo.CaseLink))`n"
+        }
+        $markdown += "`n"
+    }
+
+    $markdown += "---`n`n"
+    return $markdown
+}
+
+function Convert-DownloadedFileToMarkdown {
+    param(
+        [hashtable]$FileInfo,
+        [string]$MarkdownDir,
+        [string]$PdfToTextPath
+    )
+
+    $inputPath = $FileInfo.Path
+    $baseName = [System.IO.Path]::GetFileNameWithoutExtension($FileInfo.Filename)
+    $markdownPath = Join-Path $MarkdownDir "$baseName.md"
+
+    if (Test-Path $markdownPath) {
+        Write-Host "    [MD] Findes allerede: $markdownPath" -ForegroundColor Yellow
+        return $true
+    }
+
+    $markdown = ""
+
+    if ($FileInfo.Format -eq 'PDF') {
+        $markdown = Build-MarkdownHeader -FileInfo $FileInfo -FormatLabel 'PDF'
+
+        if ($PdfToTextPath) {
+            $tempTxt = [System.IO.Path]::GetTempFileName()
+            $absolutePath = (Resolve-Path $inputPath).Path
+            & $PdfToTextPath -layout -enc UTF-8 "$absolutePath" "$tempTxt" 2>$null
+
+            if (Test-Path $tempTxt) {
+                $text = Get-Content $tempTxt -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+                if ($text -and $text.Trim().Length -gt 50) {
+                    $markdown += $text
+                } else {
+                    $markdown += "*[PDF indeholder ingen udtrækbar tekst - muligvis scannet dokument]*"
+                }
+                Remove-Item $tempTxt -Force -ErrorAction SilentlyContinue
+            } else {
+                $markdown += "*[Kunne ikke udtrække tekst fra PDF]*"
+            }
+        } else {
+            $markdown += "*[pdftotext ikke tilgængelig - installer for tekstudtræk]*"
+        }
+    } elseif ($FileInfo.Format -eq 'DOCX' -or $FileInfo.Format -eq 'DOC') {
+        $markdown = Build-MarkdownHeader -FileInfo $FileInfo -FormatLabel $FileInfo.Format
+
+        try {
+            $word = New-Object -ComObject Word.Application
+            $word.Visible = $false
+
+            $absolutePath = (Resolve-Path $inputPath).Path
+            $doc = $word.Documents.Open($absolutePath)
+            $text = $doc.Content.Text
+
+            $doc.Close($false)
+            $word.Quit()
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($doc) | Out-Null
+            [System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+
+            if ($text -and $text.Trim().Length -gt 50) {
+                $markdown += $text
+            } else {
+                $markdown += "*[Tomt dokument eller kunne ikke udtrække tekst]*"
+            }
+        } catch {
+            $markdown += "*[Kunne ikke aabne Word dokument - Microsoft Word skal vaere installeret]*`n"
+            $markdown += "*Fejl: $($_.Exception.Message)*"
+        }
+    }
+
+    $utf8 = New-Object System.Text.UTF8Encoding $true
+    [System.IO.File]::WriteAllText($markdownPath, (Remove-MarkdownControlChars -Text $markdown), $utf8)
+    Write-Host "    [MD] Oprettet: $markdownPath" -ForegroundColor Green
+
+    return $true
+}
+
+function Resolve-PdfToTextPath {
+    $scriptDir = if ($PSScriptRoot) {
+        $PSScriptRoot
+    } elseif ($MyInvocation.MyCommand.Path) {
+        Split-Path -Parent $MyInvocation.MyCommand.Path
+    } else {
+        Get-Location
+    }
+
+    $searchPaths = @(
+        (Join-Path $scriptDir "pdftotext.exe"),
+        (Join-Path $scriptDir "bin64\pdftotext.exe"),
+        (Join-Path $scriptDir "xpdf-tools\bin64\pdftotext.exe")
+    )
+
+    foreach ($path in $searchPaths) {
+        if (Test-Path $path) {
+            return $path
+        }
+    }
+
+    return $null
+}
+
 # Set defaults
 if (-not $Environment) { $Environment = "produktion" }
 if (-not $FileType) { $FileType = "both" }
@@ -221,6 +367,11 @@ if (-not (Test-Path $OutputDir)) {
 if (-not (Test-Path $MarkdownDir)) {
     New-Item -ItemType Directory -Path $MarkdownDir | Out-Null
     Write-Host "[+] Oprettet markdown mappe: $MarkdownDir" -ForegroundColor Green
+}
+
+$pdfToTextPath = Resolve-PdfToTextPath
+if (-not $pdfToTextPath) {
+    Write-Host "[!] pdftotext.exe ikke fundet - PDF'er vil kun have metadata" -ForegroundColor Yellow
 }
 
 if (-not $convertOnly) {
@@ -559,11 +710,14 @@ foreach ($file in $filesToDownload) {
             DocumentTitle = $file.DocumentTitle
             DocumentNumber = $file.DocumentNumber
             CaseNumber = $file.CaseNumber
-            DocumentLink = $file.DocumentLink
-            CaseLink = $file.CaseLink
+                DocumentLink = $file.DocumentLink
+                CaseLink = $file.CaseLink
             FileRecno = $file.FileRecno
             DocumentRecno = $file.DocumentRecno
         }
+
+        Write-Host "    [*] Konverterer straks til markdown..." -ForegroundColor DarkGray
+        $null = Convert-DownloadedFileToMarkdown -FileInfo $downloadedFiles[-1] -MarkdownDir $MarkdownDir -PdfToTextPath $pdfToTextPath
         
     } catch {
         Write-Host "x [$fileNum/$total] '$($file.Filename)' -> FEJL ($($_.Exception.Message))" -ForegroundColor Red
@@ -622,6 +776,7 @@ Write-Host ""
                 ResponseContentType = ""
                 DocumentLink = ""
                 CaseLink = ""
+                FileRecno = ""
             }
         }
         
@@ -645,33 +800,8 @@ if ($downloadedFiles.Count -gt 0) {
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host ""
 
-    # Find script directory for pdftotext
-    $scriptDir = if ($PSScriptRoot) {
-        $PSScriptRoot
-    } elseif ($MyInvocation.MyCommand.Path) {
-        Split-Path -Parent $MyInvocation.MyCommand.Path
-    } else {
-        Get-Location
-    }
-
-    # Check for pdftotext.exe
-    $pdfToTextPath = $null
-    $searchPaths = @(
-        (Join-Path $scriptDir "pdftotext.exe"),
-        (Join-Path $scriptDir "bin64\pdftotext.exe"),
-        (Join-Path $scriptDir "xpdf-tools\bin64\pdftotext.exe")
-    )
-
-    foreach ($path in $searchPaths) {
-        if (Test-Path $path) {
-            $pdfToTextPath = $path
-            Write-Host "[+] Fundet pdftotext: $path" -ForegroundColor Green
-            break
-        }
-    }
-
-    if (-not $pdfToTextPath) {
-        Write-Host "[!] pdftotext.exe ikke fundet - PDF'er vil kun have metadata" -ForegroundColor Yellow
+    if ($pdfToTextPath) {
+        Write-Host "[+] Fundet pdftotext: $pdfToTextPath" -ForegroundColor Green
     }
 
     $converted = 0
@@ -680,122 +810,15 @@ if ($downloadedFiles.Count -gt 0) {
     foreach ($file in $downloadedFiles) {
         $fileNum = $converted + $conversionErrors + 1
         $total = $downloadedFiles.Count
-        
-        $inputPath = $file.Path
-        $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Filename)
-        $markdownPath = Join-Path $MarkdownDir "$baseName.md"
-        
-        # Check if already converted
-        if (Test-Path $markdownPath) {
-            Write-Host "  [$fileNum/$total] $($file.Filename) -> FINDES ALLEREDE (springer over)" -ForegroundColor Yellow
-            $converted++  # Count as converted since it exists
-            continue
-        }
-        
-        Write-Host "  [$fileNum/$total] $($file.Filename) -> " -NoNewline -ForegroundColor Cyan
-        
+
+        Write-Host "  [$fileNum/$total] $($file.Filename)" -ForegroundColor Cyan
         try {
-            $markdown = ""
-            
-            if ($file.Format -eq 'PDF') {
-                # PDF to Markdown
-                $documentUrl = if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }
-                $markdown = "# $($file.DocumentTitle)`n`n"
-                $markdown += "**Dokument:** $($file.DocumentNumber)`n"
-                $markdown += "**Sag:** $($file.CaseNumber)`n"
-                $markdown += "**Format:** PDF`n"
-                if ($file.SourceUrl) {
-                    $markdown += "**Kilde URL (SIF):** $($file.SourceUrl)`n"
-                }
-                if ($file.ResponseContentType) {
-                    $markdown += "**Content-Type:** $($file.ResponseContentType)`n"
-                }
-                if ($documentUrl) {
-                    $markdown += "**P360 Links:**`n"
-                    $markdown += "- [Åbn dokument]($documentUrl)`n`n"
-                }
-                $markdown += "---`n`n"
-                
-                if ($pdfToTextPath) {
-                    # Extract text using pdftotext
-                    $tempTxt = [System.IO.Path]::GetTempFileName()
-                    $absolutePath = (Resolve-Path $inputPath).Path
-                    
-                    & $pdfToTextPath -layout -enc UTF-8 "$absolutePath" "$tempTxt" 2>$null
-                    
-                    if (Test-Path $tempTxt) {
-                        $text = Get-Content $tempTxt -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
-                        if ($text -and $text.Trim().Length -gt 50) {
-                            $markdown += $text
-                        } else {
-                            $markdown += "*[PDF indeholder ingen udtrækbar tekst - muligvis scannet dokument]*"
-                        }
-                        Remove-Item $tempTxt -Force -ErrorAction SilentlyContinue
-                    } else {
-                        $markdown += "*[Kunne ikke udtrække tekst fra PDF]*"
-                    }
-                } else {
-                    $markdown += "*[pdftotext ikke tilgængelig - installer for tekstudtræk]*"
-                }
-                
-            } elseif ($file.Format -eq 'DOCX' -or $file.Format -eq 'DOC') {
-                # Word to Markdown via Word COM object
-                $documentUrl = if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }
-                $markdown = "# $($file.DocumentTitle)`n`n"
-                $markdown += "**Dokument:** $($file.DocumentNumber)`n"
-                $markdown += "**Sag:** $($file.CaseNumber)`n"
-                $markdown += "**Format:** $($file.Format)`n"
-                if ($file.SourceUrl) {
-                    $markdown += "**Kilde URL (SIF):** $($file.SourceUrl)`n"
-                }
-                if ($file.ResponseContentType) {
-                    $markdown += "**Content-Type:** $($file.ResponseContentType)`n"
-                }
-                if ($documentUrl) {
-                    $markdown += "**P360 Links:**`n"
-                    $markdown += "- [Åbn dokument]($documentUrl)`n`n"
-                }
-                $markdown += "---`n`n"
-                
-                try {
-                    # Use Word COM object to convert
-                    $word = New-Object -ComObject Word.Application
-                    $word.Visible = $false
-                    
-                    $absolutePath = (Resolve-Path $inputPath).Path
-                    $doc = $word.Documents.Open($absolutePath)
-                    
-                    # Extract text from Word document
-                    $text = $doc.Content.Text
-                    
-                    # Close document
-                    $doc.Close($false)
-                    $word.Quit()
-                    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($doc) | Out-Null
-                    [System.Runtime.Interopservices.Marshal]::ReleaseComObject($word) | Out-Null
-                    [System.GC]::Collect()
-                    [System.GC]::WaitForPendingFinalizers()
-                    
-                    if ($text -and $text.Trim().Length -gt 50) {
-                        $markdown += $text
-                    } else {
-                        $markdown += "*[Tomt dokument eller kunne ikke udtrække tekst]*"
-                    }
-                } catch {
-                    $markdown += "*[Kunne ikke aabne Word dokument - Microsoft Word skal vaere installeret]*`n"
-                    $markdown += "*Fejl: $($_.Exception.Message)*"
-                }
-            }
-            
-            # Save markdown with UTF-8 BOM
-            $utf8 = New-Object System.Text.UTF8Encoding $true
-            [System.IO.File]::WriteAllText($markdownPath, (Remove-MarkdownControlChars -Text $markdown), $utf8)
-            
-            Write-Host "OK" -ForegroundColor Green
+            # Convert flow: gå fil-for-fil, byg metadata/links først, lav markdown, og fortsæt til næste
+            $null = Convert-DownloadedFileToMarkdown -FileInfo $file -MarkdownDir $MarkdownDir -PdfToTextPath $pdfToTextPath
             $converted++
             
         } catch {
-            Write-Host "FEJL" -ForegroundColor Red
+            Write-Host "    [MD] FEJL: $($_.Exception.Message)" -ForegroundColor Red
             $conversionErrors++
         }
     }

@@ -5,6 +5,56 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+function Get-ExtensionFromFormat {
+    param([string]$Format)
+
+    switch (($Format | ForEach-Object { $_.ToUpperInvariant() })) {
+        'PDF' { return '.pdf' }
+        'DOCX' { return '.docx' }
+        'DOC' { return '.doc' }
+        default { return '' }
+    }
+}
+
+function Get-ResolvedFilename {
+    param(
+        [string]$RawTitle,
+        [string]$Format,
+        [string]$SourceUrl
+    )
+
+    $safeTitle = ($RawTitle -replace '[\\/:*?"<>|]', '_').Trim()
+    if ([string]::IsNullOrWhiteSpace($safeTitle)) {
+        $safeTitle = "fil"
+    }
+
+    $expectedExtension = Get-ExtensionFromFormat -Format $Format
+    $currentExtension = [System.IO.Path]::GetExtension($safeTitle)
+
+    if (-not [string]::IsNullOrWhiteSpace($currentExtension)) {
+        if (-not [string]::IsNullOrWhiteSpace($expectedExtension) -and $currentExtension.ToLowerInvariant() -ne $expectedExtension) {
+            $safeTitle = [System.IO.Path]::GetFileNameWithoutExtension($safeTitle) + $expectedExtension
+        }
+        return $safeTitle
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($expectedExtension)) {
+        return "$safeTitle$expectedExtension"
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($SourceUrl)) {
+        try {
+            $uri = [System.Uri]$SourceUrl
+            $urlExtension = [System.IO.Path]::GetExtension($uri.AbsolutePath)
+            if (-not [string]::IsNullOrWhiteSpace($urlExtension)) {
+                return "$safeTitle$urlExtension"
+            }
+        } catch {}
+    }
+
+    return $safeTitle
+}
+
 param(
     [ValidateSet("arkiv", "produktion")][string]$Environment,
     [ValidateSet("word", "pdf", "both")][string]$FileType,
@@ -366,28 +416,37 @@ foreach ($file in $filesToDownload) {
     $fileNum = $downloaded + $errors + 1
     $total = $filesToDownload.Count
     
-    # Sanitize filename
-    $safeFilename = $file.Filename -replace '[\\/:*?"<>|]', '_'
+    # Resolve filename and extension before save
+    $safeFilename = Get-ResolvedFilename -RawTitle $file.Filename -Format $file.Format -SourceUrl $file.URL
     $outputPath = Join-Path $OutputDir $safeFilename
     
-    Write-Host "v [$fileNum/$total] '$($file.Filename)' -> Henter..." -ForegroundColor Cyan
+    Write-Host "v [$fileNum/$total] '$safeFilename' -> Henter..." -ForegroundColor Cyan
+    Write-Host "    URL: $($file.URL)" -ForegroundColor DarkGray
     
     try {
         $startTime = Get-Date
         
         # Download using URL from API with Windows Authentication
-        Invoke-WebRequest -Uri $file.URL -OutFile $outputPath -UseDefaultCredentials -WebSession $session -UseBasicParsing
+        $response = Invoke-WebRequest -Uri $file.URL -OutFile $outputPath -UseDefaultCredentials -WebSession $session -UseBasicParsing -PassThru
+
+        $contentType = ""
+        if ($response.Headers -and $response.Headers['Content-Type']) {
+            $contentType = $response.Headers['Content-Type']
+        }
         
         $duration = (Get-Date) - $startTime
         $fileSize = (Get-Item $outputPath).Length / 1MB
-        Write-Host "v [$fileNum/$total] '$($file.Filename)' -> OK ($("{0:N2}" -f $fileSize) MB, $("{0:N1}" -f $duration.TotalSeconds)s)" -ForegroundColor Green
+        Write-Host "v [$fileNum/$total] '$safeFilename' -> OK ($("{0:N2}" -f $fileSize) MB, $("{0:N1}" -f $duration.TotalSeconds)s)" -ForegroundColor Green
         $downloaded++
         
         # Add to list for markdown conversion
         $downloadedFiles += @{
             Path = $outputPath
-            Filename = $file.Filename
+            Filename = $safeFilename
+            OriginalFilename = $file.Filename
             Format = $file.Format
+            SourceUrl = $file.URL
+            ResponseContentType = $contentType
             DocumentTitle = $file.DocumentTitle
             DocumentNumber = $file.DocumentNumber
             CaseNumber = $file.CaseNumber
@@ -449,6 +508,9 @@ Write-Host ""
                 DocumentNumber = $docNumber
                 CaseNumber = $caseNumber
                 Filename = $file.Name
+                OriginalFilename = $file.Name
+                SourceUrl = ""
+                ResponseContentType = ""
                 DocumentLink = ""
                 CaseLink = ""
             }
@@ -531,6 +593,12 @@ if ($downloadedFiles.Count -gt 0) {
                 $markdown += "**Dokument:** $($file.DocumentNumber)`n"
                 $markdown += "**Sag:** $($file.CaseNumber)`n"
                 $markdown += "**Format:** PDF`n"
+                if ($file.SourceUrl) {
+                    $markdown += "**Kilde URL (SIF):** $($file.SourceUrl)`n"
+                }
+                if ($file.ResponseContentType) {
+                    $markdown += "**Content-Type:** $($file.ResponseContentType)`n"
+                }
                 $markdown += "**P360 Links:**`n"
                 $markdown += "- [Åbn dokument]($($file.DocumentLink))`n"
                 $markdown += "- [Åbn sag]($($file.CaseLink))`n`n"
@@ -564,6 +632,12 @@ if ($downloadedFiles.Count -gt 0) {
                 $markdown += "**Dokument:** $($file.DocumentNumber)`n"
                 $markdown += "**Sag:** $($file.CaseNumber)`n"
                 $markdown += "**Format:** $($file.Format)`n"
+                if ($file.SourceUrl) {
+                    $markdown += "**Kilde URL (SIF):** $($file.SourceUrl)`n"
+                }
+                if ($file.ResponseContentType) {
+                    $markdown += "**Content-Type:** $($file.ResponseContentType)`n"
+                }
                 if ($file.DocumentLink) {
                     $markdown += "**P360 Links:**`n"
                     $markdown += "- [Åbn dokument]($($file.DocumentLink))`n"
@@ -647,6 +721,7 @@ foreach ($file in $downloadedFiles) {
 - **Dokument nummer:** $($file.DocumentNumber)
 - **Sags nummer:** $($file.CaseNumber)
 - **Fil:** ``$($file.Filename)`` ($($file.Format))
+- **Kilde URL (SIF):** $(if ($file.SourceUrl) { "[$($file.SourceUrl)]($($file.SourceUrl))" } else { "-" })
 - **P360 Links:**
   - [Åbn dokument i P360]($($file.DocumentLink))
   - [Åbn sag i P360]($($file.CaseLink))

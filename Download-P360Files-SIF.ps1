@@ -16,9 +16,15 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-# Log all console output to a file in the current working directory
+# Log all console output to a file in a dedicated logs folder
 $logFileName = "p360_sif_download_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss')
-$logFilePath = Join-Path (Get-Location) $logFileName
+$logDirectory = Join-Path (Get-Location) "logs"
+
+if (-not (Test-Path -Path $logDirectory -PathType Container)) {
+    New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
+}
+
+$logFilePath = Join-Path $logDirectory $logFileName
 $transcriptStarted = $false
 
 try {

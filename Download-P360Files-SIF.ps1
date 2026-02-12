@@ -438,6 +438,18 @@ Write-Host " HENTER DOKUMENTER FRA P360 SIF API" -ForegroundColor Cyan
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host ""
 
+$effectiveMaxReturnedDocuments = $MaxReturnedDocuments
+if ($effectiveMaxReturnedDocuments -gt 100) {
+    $effectiveMaxReturnedDocuments = 100
+    Write-Host "[*] MaxReturnedDocuments er over 100. Henter i batches af 100 pr. side." -ForegroundColor Yellow
+}
+
+if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
+    $effectiveMaxReturnedDocuments = $MaxFilesToProcess
+    Write-Host "[*] Justerer API-side stoerrelse til $effectiveMaxReturnedDocuments (samme som maks filer i koerslen)" -ForegroundColor Yellow
+}
+
+$targetDocumentCount = if ($MaxFilesToProcess -gt 0) { $MaxFilesToProcess } else { 0 }
 $targetDocumentCount = $requestedDocumentLimit
 
     # Build API request with pagination
@@ -488,6 +500,25 @@ $page = 0
 $hasMorePages = $true
 
 while ($hasMorePages) {
+    $remainingToTarget = 0
+    if ($targetDocumentCount -gt 0) {
+        $remainingToTarget = $targetDocumentCount - $allDocuments.Count
+        if ($remainingToTarget -le 0) {
+            $hasMorePages = $false
+            break
+        }
+    }
+
+    $currentPageSize = if ($targetDocumentCount -gt 0 -and $remainingToTarget -lt $effectiveMaxReturnedDocuments) {
+        $remainingToTarget
+    } else {
+        $effectiveMaxReturnedDocuments
+    }
+
+    if ($page -eq 0) {
+        Write-Host "[*] Kalder API (side $page, antal $currentPageSize)..." -ForegroundColor Yellow
+    } else {
+        Write-Host "[*] Henter side $page (antal $currentPageSize)..." -ForegroundColor Yellow
     $remainingDocuments = $targetDocumentCount - $allDocuments.Count
     if ($remainingDocuments -le 0) {
         $hasMorePages = $false
@@ -504,6 +535,7 @@ while ($hasMorePages) {
 
     # Call API
     try {
+        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $currentPageSize
         $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $pageSize
         $response = $result.Response
         $pageDocuments = $result.Documents
@@ -518,6 +550,7 @@ while ($hasMorePages) {
                 $hasMorePages = $false
             } else {
                 # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
+                if ($pageDocuments.Count -ge $currentPageSize) {
                 if ($pageDocuments.Count -ge $pageSize) {
                     $page++
                 } else {

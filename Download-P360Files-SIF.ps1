@@ -76,6 +76,44 @@ function Get-ResolvedFilename {
     return $safeTitle
 }
 
+function Get-CaseBasedFilename {
+    param(
+        [string]$CaseNumber,
+        [string]$Format,
+        [string]$FallbackTitle,
+        [string]$SourceUrl
+    )
+
+    $displayCaseNumber = ""
+    if (-not [string]::IsNullOrWhiteSpace($CaseNumber)) {
+        $displayCaseNumber = ($CaseNumber.Trim() -replace '\\', '/' -replace '_', '/')
+    }
+
+    $extension = Get-ExtensionFromFormat -Format $Format
+    if ([string]::IsNullOrWhiteSpace($extension)) {
+        $resolvedFallback = Get-ResolvedFilename -RawTitle $FallbackTitle -Format $Format -SourceUrl $SourceUrl
+        $extension = [System.IO.Path]::GetExtension($resolvedFallback)
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($displayCaseNumber)) {
+        $displayName = "$displayCaseNumber Afgørelse"
+        $safeName = ($displayName -replace '/', '_') + $extension
+
+        return @{
+            SafeFilename = $safeName
+            DisplayName = $displayName
+            DisplayCaseNumber = $displayCaseNumber
+        }
+    }
+
+    $fallback = Get-ResolvedFilename -RawTitle $FallbackTitle -Format $Format -SourceUrl $SourceUrl
+    return @{
+        SafeFilename = $fallback
+        DisplayName = [System.IO.Path]::GetFileNameWithoutExtension($fallback)
+        DisplayCaseNumber = ""
+    }
+}
+
 param(
     [ValidateSet("arkiv", "produktion")][string]$Environment,
     [ValidateSet("word", "pdf", "both")][string]$FileType,
@@ -370,6 +408,21 @@ foreach ($doc in $allDocuments) {
                 }
                 continue
             }
+
+            # Rule 5: File title from SIF must start with "Afgørelse"
+            if ($fileTitle -notmatch '^Afg.relse') {
+                $skipped++
+                $reason = "Filnavn!=Afgørelse*"
+                if (-not $skipReasons.ContainsKey($reason)) {
+                    $skipReasons[$reason] = 0
+                }
+                $skipReasons[$reason]++
+
+                if ($skipped -le 10) {
+                    Write-Host "o SKIP: $reason | Fil='$fileTitle'" -ForegroundColor DarkGray
+                }
+                continue
+            }
             
             Write-Host "v OK: '$fileTitle' | Format=$fileFormat | FileRecno=$fileRecno" -ForegroundColor Green
             if ($fileTitle -and $docTitle -and $fileTitle -ne $docTitle) {
@@ -443,8 +496,11 @@ foreach ($file in $filesToDownload) {
     $fileNum = $downloaded + $errors + 1
     $total = $filesToDownload.Count
     
-    # Resolve filename and extension before save
-    $safeFilename = Get-ResolvedFilename -RawTitle $file.Filename -Format $file.Format -SourceUrl $file.URL
+    # Resolve case-based filename before save
+    $caseFilename = Get-CaseBasedFilename -CaseNumber $file.CaseNumber -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
+    $safeFilename = $caseFilename.SafeFilename
+    $displayTargetName = $caseFilename.DisplayName
+    $displayCaseNumber = $caseFilename.DisplayCaseNumber
     $outputPath = Join-Path $OutputDir $safeFilename
     
     Write-Host "v [$fileNum/$total] '$safeFilename' -> Henter..." -ForegroundColor Cyan
@@ -457,13 +513,24 @@ foreach ($file in $filesToDownload) {
         $response = Invoke-WebRequest -Uri $file.URL -OutFile $outputPath -UseDefaultCredentials -WebSession $session -UseBasicParsing -PassThru
 
         $contentType = ""
+        $statusCode = ""
         if ($response.Headers -and $response.Headers['Content-Type']) {
             $contentType = $response.Headers['Content-Type']
+        }
+        if ($response.StatusCode) {
+            $statusCode = [string]$response.StatusCode
         }
         
         $duration = (Get-Date) - $startTime
         $fileSize = (Get-Item $outputPath).Length / 1MB
         Write-Host "v [$fileNum/$total] '$safeFilename' -> OK ($("{0:N2}" -f $fileSize) MB, $("{0:N1}" -f $duration.TotalSeconds)s)" -ForegroundColor Green
+
+        if (-not [string]::IsNullOrWhiteSpace($displayCaseNumber)) {
+            Write-Host "    Log: sagsnummer $displayCaseNumber [$($file.Filename)] er gemt som $displayTargetName | SIF svar: Status=$statusCode, Content-Type='$contentType'" -ForegroundColor Gray
+        } else {
+            Write-Host "    Log: [$($file.Filename)] er gemt som $displayTargetName | SIF svar: Status=$statusCode, Content-Type='$contentType'" -ForegroundColor Gray
+        }
+
         $downloaded++
         
         # Add to list for markdown conversion

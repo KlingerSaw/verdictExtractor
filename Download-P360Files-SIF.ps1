@@ -317,7 +317,7 @@ if (-not $FileType) { $FileType = "both" }
 if (-not $OutputDir) { $OutputDir = ".\prod_downloads" }
 if (-not $MarkdownDir) { $MarkdownDir = ".\prod_markdown" }
 if (-not $ContactRecno) { $ContactRecno = 100016 }
-if (-not $TitleFilter) { $TitleFilter = "Afgørelse af%" }
+if (-not $TitleFilter) { $TitleFilter = "" }
 if (-not $MaxReturnedDocuments -or $MaxReturnedDocuments -lt 0) { $MaxReturnedDocuments = 0 }
 if (-not $MaxFilesToProcess -or $MaxFilesToProcess -lt 0) { $MaxFilesToProcess = 0 }
 
@@ -581,7 +581,7 @@ Write-Host ""
 Write-Host "[+] TOTALT modtaget $($allDocuments.Count) dokumenter" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "[*] Filtrerer dokumenter (KUN DOC/DOCX/PDF + Afgørelse af)..." -ForegroundColor Yellow
+Write-Host "[*] Filtrerer dokumenter (KUN DOC/DOCX/PDF + Afgørelse-format)..." -ForegroundColor Yellow
 
 # Filter documents
 $allowedExtensions = @('DOC', 'DOCX', 'PDF')
@@ -594,6 +594,8 @@ if ($FileType -eq 'word') {
 $filesToDownload = @()
 $skipped = 0
 $skipReasons = @{}
+$decisionTitlePattern = '(^Afg.relse af)|(^\d{2}[-_/]\d{5}\s+Afg.relse$)'
+$decisionFileTitlePattern = '(^Afg.relse)|(^\d{2}[-_/]\d{5}\s+Afg.relse$)'
 
 foreach ($doc in $allDocuments) {
     $docRecno = $doc.Recno
@@ -612,10 +614,10 @@ foreach ($doc in $allDocuments) {
     $skipDoc = $false
     $skipReason = ""
 
-    # Rule 1: Must start with "Afgørelse af"
-    if ($docTitle -notmatch '^Afg.relse af') {
+    # Rule 1: Must be either "Afgørelse af..." or "XX-YYYYY Afgørelse"
+    if ($docTitle -notmatch $decisionTitlePattern) {
         $skipDoc = $true
-        $skipReason = "Titel!=Afgørelse af"
+        $skipReason = "Titel!=Afgørelse format"
     }
 
     # Rule 2: Check klassifikation
@@ -672,10 +674,10 @@ foreach ($doc in $allDocuments) {
                 continue
             }
 
-            # Rule 5: File title from SIF must start with "Afgørelse"
-            if ($fileTitle -notmatch '^Afg.relse') {
+            # Rule 5: File title from SIF must be either "Afgørelse..." or "XX-YYYYY Afgørelse"
+            if ($fileTitle -notmatch $decisionFileTitlePattern) {
                 $skipped++
-                $reason = "Filnavn!=Afgørelse*"
+                $reason = "Filnavn!=Afgørelse format"
                 if (-not $skipReasons.ContainsKey($reason)) {
                     $skipReasons[$reason] = 0
                 }

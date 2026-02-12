@@ -199,7 +199,7 @@ try {
 
 if (-not $convertOnly) {
     Write-Host ""
-    Write-Host "[*] Filtrerer raekker (KUN DOC/DOCX/PDF + Afgørelse af)..." -ForegroundColor Yellow
+    Write-Host "[*] Filtrerer raekker (KUN DOC/DOCX/PDF + Afgørelse-format)..." -ForegroundColor Yellow
 
 # Filter data
 $allowedExtensions = @('DOC', 'DOCX', 'PDF')
@@ -209,6 +209,7 @@ elseif ($FileType -eq 'pdf') { $allowedExtensions = @('PDF') }
 $filesToDownload = @()
 $skipped = 0
 $skipReasons = @{}
+$decisionTitlePattern = '(^Afg.relse af)|(^\d{2}[-_/]\d{5}\s+Afg.relse$)'
 
 foreach ($row in $data) {
     # Extract fields
@@ -228,10 +229,10 @@ foreach ($row in $data) {
     $skip = $false
     $skipReason = ""
     
-    # Rule 1: Must start with "Afgørelse af"
-    if ($docName -notmatch '^Afg.relse af') {
+    # Rule 1: Must be either "Afgørelse af..." or "XX-YYYYY Afgørelse"
+    if ($docName -notmatch $decisionTitlePattern) {
         $skip = $true
-        $skipReason = "Titel!=Afgørelse af"
+        $skipReason = "Titel!=Afgørelse format"
     }
     
     # Rule 2: Check klassifikation

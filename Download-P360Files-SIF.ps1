@@ -431,6 +431,11 @@ Write-Host "====================================================================
 Write-Host ""
 
 $effectiveMaxReturnedDocuments = $MaxReturnedDocuments
+if ($effectiveMaxReturnedDocuments -gt 100) {
+    $effectiveMaxReturnedDocuments = 100
+    Write-Host "[*] MaxReturnedDocuments er over 100. Henter i batches af 100 pr. side." -ForegroundColor Yellow
+}
+
 if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
     $effectiveMaxReturnedDocuments = $MaxFilesToProcess
     Write-Host "[*] Justerer API-side stoerrelse til $effectiveMaxReturnedDocuments (samme som maks filer i koerslen)" -ForegroundColor Yellow
@@ -486,15 +491,30 @@ $page = 0
 $hasMorePages = $true
 
 while ($hasMorePages) {
-    if ($page -eq 0) {
-        Write-Host "[*] Kalder API (side $page)..." -ForegroundColor Yellow
+    $remainingToTarget = 0
+    if ($targetDocumentCount -gt 0) {
+        $remainingToTarget = $targetDocumentCount - $allDocuments.Count
+        if ($remainingToTarget -le 0) {
+            $hasMorePages = $false
+            break
+        }
+    }
+
+    $currentPageSize = if ($targetDocumentCount -gt 0 -and $remainingToTarget -lt $effectiveMaxReturnedDocuments) {
+        $remainingToTarget
     } else {
-        Write-Host "[*] Henter side $page..." -ForegroundColor Yellow
+        $effectiveMaxReturnedDocuments
+    }
+
+    if ($page -eq 0) {
+        Write-Host "[*] Kalder API (side $page, antal $currentPageSize)..." -ForegroundColor Yellow
+    } else {
+        Write-Host "[*] Henter side $page (antal $currentPageSize)..." -ForegroundColor Yellow
     }
 
     # Call API
     try {
-        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $effectiveMaxReturnedDocuments
+        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $currentPageSize
         $response = $result.Response
         $pageDocuments = $result.Documents
         
@@ -508,7 +528,7 @@ while ($hasMorePages) {
                 $hasMorePages = $false
             } else {
                 # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
-                if ($pageDocuments.Count -ge $effectiveMaxReturnedDocuments) {
+                if ($pageDocuments.Count -ge $currentPageSize) {
                     $page++
                 } else {
                     $hasMorePages = $false

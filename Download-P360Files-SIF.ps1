@@ -164,16 +164,13 @@ function Build-MarkdownHeader {
     $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
     $markdown += "**Format:** $FormatLabel`n"
 
-    if ($documentUrl -or $FileInfo.CaseLink) {
+    if ($documentUrl) {
         $markdown += "**P360 Links:**`n"
         if ($documentUrl) {
             $markdown += "- [Hent fil]($documentUrl)`n"
         }
         if ($FileInfo.DocumentLink) {
             $markdown += "- [Dokumentkort]($($FileInfo.DocumentLink))`n"
-        }
-        if ($FileInfo.CaseLink) {
-            $markdown += "- [Sagskort]($($FileInfo.CaseLink))`n"
         }
         $markdown += "`n"
     }
@@ -940,7 +937,6 @@ foreach ($file in $downloadedFiles) {
 - **P360 Links:**
   - [Hent fil]($(if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }))
   - [Dokumentkort]($($file.DocumentLink))
-  - [Sagskort]($($file.CaseLink))
 - **Lokal fil:** [``$($file.Filename)``](../prod_downloads/$($file.Filename))
 - **Markdown:** [``$markdownFile``](./$markdownFile)
 

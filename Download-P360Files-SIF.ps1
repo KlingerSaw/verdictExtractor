@@ -1,6 +1,16 @@
 ﻿# P360 SIF API Document Downloader
 # Henter dokumenter via P360 SIF REST API
 
+param(
+    [ValidateSet("arkiv", "produktion")][string]$Environment,
+    [ValidateSet("word", "pdf", "both")][string]$FileType,
+    [string]$OutputDir,
+    [string]$MarkdownDir,
+    [string]$AuthKey,
+    [int]$ContactRecno,
+    [string]$TitleFilter
+)
+
 # Set console encoding to UTF-8 for Danish characters
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
@@ -128,16 +138,6 @@ function Get-CaseBasedFilename {
         DisplayCaseNumber = ""
     }
 }
-
-param(
-    [ValidateSet("arkiv", "produktion")][string]$Environment,
-    [ValidateSet("word", "pdf", "both")][string]$FileType,
-    [string]$OutputDir,
-    [string]$MarkdownDir,
-    [string]$AuthKey,
-    [int]$ContactRecno,
-    [string]$TitleFilter
-)
 
 # Set defaults
 if (-not $Environment) { $Environment = "produktion" }

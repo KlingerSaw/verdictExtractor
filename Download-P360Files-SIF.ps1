@@ -369,16 +369,16 @@ $apiPageChunkSize = 100
 
 if (-not $convertOnly) {
     # Configuration
-    $baseUrl = if ($Environment -eq 'arkiv') { 
-        'https://esdh-nh-arkiv/Biz/v2/api/call/SI.Data.RPC/SI.Data.RPC' 
-    } else { 
-        'https://esdh-nh-PB360/Biz/v2/api/call/SI.Data.RPC/SI.Data.RPC' 
+    $baseUrl = if ($Environment -eq 'arkiv') {
+        'https://esdh-nh-arkiv/Biz/v2/api/call/SI.Data.RPC/SI.Data.RPC'
+    } else {
+        'https://esdh-nh-PB360/Biz/v2/api/call/SI.Data.RPC/SI.Data.RPC'
     }
 
-    $downloadBaseUrl = if ($Environment -eq 'arkiv') { 
-        'https://esdh-nh-arkiv' 
-    } else { 
-        'https://esdh-nh-pb360' 
+    $downloadBaseUrl = if ($Environment -eq 'arkiv') {
+        'https://esdh-nh-arkiv'
+    } else {
+        'https://esdh-nh-pb360'
     }
 
     # Prompt for AuthKey if not provided
@@ -432,28 +432,27 @@ if (-not $pdfToTextPath) {
 }
 
 if (-not $convertOnly) {
-Write-Host ""
-Write-Host "====================================================================" -ForegroundColor Cyan
-Write-Host " HENTER DOKUMENTER FRA P360 SIF API" -ForegroundColor Cyan
-Write-Host "====================================================================" -ForegroundColor Cyan
-Write-Host ""
+    Write-Host ""
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host " HENTER DOKUMENTER FRA P360 SIF API" -ForegroundColor Cyan
+    Write-Host "====================================================================" -ForegroundColor Cyan
+    Write-Host ""
 
-$effectiveMaxReturnedDocuments = $MaxReturnedDocuments
-if ($effectiveMaxReturnedDocuments -gt 100) {
-    $effectiveMaxReturnedDocuments = 100
-    Write-Host "[*] MaxReturnedDocuments er over 100. Henter i batches af 100 pr. side." -ForegroundColor Yellow
-}
+    $effectiveMaxReturnedDocuments = $MaxReturnedDocuments
+    if ($effectiveMaxReturnedDocuments -gt 100) {
+        $effectiveMaxReturnedDocuments = 100
+        Write-Host "[*] MaxReturnedDocuments er over 100. Henter i batches af 100 pr. side." -ForegroundColor Yellow
+    }
 
-if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
-    $effectiveMaxReturnedDocuments = $MaxFilesToProcess
-    Write-Host "[*] Justerer API-side stoerrelse til $effectiveMaxReturnedDocuments (samme som maks filer i koerslen)" -ForegroundColor Yellow
-}
+    if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
+        $effectiveMaxReturnedDocuments = $MaxFilesToProcess
+        Write-Host "[*] Justerer API-side stoerrelse til $effectiveMaxReturnedDocuments (samme som maks filer i koerslen)" -ForegroundColor Yellow
+    }
 
-$targetDocumentCount = if ($MaxFilesToProcess -gt 0) { $MaxFilesToProcess } else { 0 }
-$targetDocumentCount = $requestedDocumentLimit
+    $targetDocumentCount = $requestedDocumentLimit
 
     # Build API request with pagination
-$apiUrl = "$baseUrl/DocumentService/GetDocuments?authkey=$AuthKey"
+    $apiUrl = "$baseUrl/DocumentService/GetDocuments?authkey=$AuthKey"
 
 function Invoke-GetDocumentsPage {
     param(
@@ -495,85 +494,84 @@ function Invoke-GetDocumentsPage {
     }
 }
 
-$allDocuments = @()
-$page = 0
-$hasMorePages = $true
+    $allDocuments = @()
+    $page = 0
+    $hasMorePages = $true
 
-while ($hasMorePages) {
-    $remainingToTarget = 0
-    if ($targetDocumentCount -gt 0) {
-        $remainingToTarget = $targetDocumentCount - $allDocuments.Count
-        if ($remainingToTarget -le 0) {
-            $hasMorePages = $false
-            break
-        }
-    }
-
-    $currentPageSize = if ($targetDocumentCount -gt 0 -and $remainingToTarget -lt $effectiveMaxReturnedDocuments) {
-        $remainingToTarget
-    } else {
-        $effectiveMaxReturnedDocuments
-    }
-
-    if ($page -eq 0) {
-        Write-Host "[*] Kalder API (side $page, antal $currentPageSize)..." -ForegroundColor Yellow
-    } else {
-        Write-Host "[*] Henter side $page (antal $currentPageSize)..." -ForegroundColor Yellow
-    }
-
-    # Call API
-    try {
-        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $currentPageSize
-        $response = $result.Response
-        $pageDocuments = $result.Documents
-        
-        if ($pageDocuments -and $pageDocuments.Count -gt 0) {
-            Write-Host "    Modtaget $($pageDocuments.Count) dokumenter" -ForegroundColor Gray
-            $allDocuments += $pageDocuments
-            
-            if ($allDocuments.Count -ge $targetDocumentCount) {
-                $allDocuments = @($allDocuments | Select-Object -First $targetDocumentCount)
-                Write-Host "    Naaede maks graense for dokumenter i koerslen ($targetDocumentCount). Stopper pagination." -ForegroundColor Gray
+    while ($hasMorePages) {
+        $remainingToTarget = 0
+        if ($targetDocumentCount -gt 0) {
+            $remainingToTarget = $targetDocumentCount - $allDocuments.Count
+            if ($remainingToTarget -le 0) {
                 $hasMorePages = $false
-            } else {
-                # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
-                if ($pageDocuments.Count -ge $currentPageSize) {
+                break
+            }
+        }
+
+        $currentPageSize = if ($targetDocumentCount -gt 0 -and $remainingToTarget -lt $effectiveMaxReturnedDocuments) {
+            $remainingToTarget
+        } else {
+            $effectiveMaxReturnedDocuments
+        }
+
+        if ($page -eq 0) {
+            Write-Host "[*] Kalder API (side $page, antal $currentPageSize)..." -ForegroundColor Yellow
+        } else {
+            Write-Host "[*] Henter side $page (antal $currentPageSize)..." -ForegroundColor Yellow
+        }
+
+        # Call API
+        try {
+            $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $currentPageSize
+            $response = $result.Response
+            $pageDocuments = $result.Documents
+
+            if ($pageDocuments -and $pageDocuments.Count -gt 0) {
+                Write-Host "    Modtaget $($pageDocuments.Count) dokumenter" -ForegroundColor Gray
+                $allDocuments += $pageDocuments
+
+                if ($targetDocumentCount -gt 0 -and $allDocuments.Count -ge $targetDocumentCount) {
+                    $allDocuments = @($allDocuments | Select-Object -First $targetDocumentCount)
+                    Write-Host "    Naaede maks graense for dokumenter i koerslen ($targetDocumentCount). Stopper pagination." -ForegroundColor Gray
+                    $hasMorePages = $false
+                } elseif ($pageDocuments.Count -ge $currentPageSize) {
+                    # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
                     $page++
                 } else {
                     $hasMorePages = $false
                 }
+            } else {
+                $hasMorePages = $false
             }
-        } else {
-            $hasMorePages = $false
+
+        } catch {
+            Write-Host "FEJL: Kunne ikke kalde API" -ForegroundColor Red
+            Write-Host $_.Exception.Message -ForegroundColor Red
+            pause
+            Stop-LogTranscript
+            exit 1
         }
-        
-    } catch {
-        Write-Host "FEJL: Kunne ikke kalde API" -ForegroundColor Red
-        Write-Host $_.Exception.Message -ForegroundColor Red
-        pause
-        Stop-LogTranscript
-        exit 1
     }
-}
 
-# Retry once without Title filter if nothing was returned
-if ($allDocuments.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($TitleFilter)) {
-    Write-Host "[!] API returnerede 0 dokumenter med Title-filter. Prøver igen uden server-side title-filter..." -ForegroundColor Yellow
+    # Retry once without Title filter if nothing was returned
+    if ($allDocuments.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($TitleFilter)) {
+        Write-Host "[!] API returnerede 0 dokumenter med Title-filter. Proever igen uden server-side title-filter..." -ForegroundColor Yellow
 
-    try {
-        $fallbackPageSize = [Math]::Min($apiPageChunkSize, $targetDocumentCount)
-        $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter "" -MaxReturnedDocuments $fallbackPageSize
-        $docsNoTitle = $resultNoTitle.Documents
-        Write-Host "[+] Uden server-side title-filter fandt API $($docsNoTitle.Count) dokumenter på side 0" -ForegroundColor Green
+        try {
+            $fallbackPageSize = [Math]::Min($apiPageChunkSize, $targetDocumentCount)
+            $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter "" -MaxReturnedDocuments $fallbackPageSize
+            $docsNoTitle = $resultNoTitle.Documents
+            Write-Host "[+] Uden server-side title-filter fandt API $($docsNoTitle.Count) dokumenter paa side 0" -ForegroundColor Green
 
-        if ($docsNoTitle.Count -gt 0) {
-            Write-Host "[+] Fortsaetter med resultater uden server-side title-filter (lokal filtrering bevares)" -ForegroundColor Green
-            $allDocuments = @($docsNoTitle | Select-Object -First $targetDocumentCount)
+            if ($docsNoTitle.Count -gt 0) {
+                Write-Host "[+] Fortsaetter med resultater uden server-side title-filter (lokal filtrering bevares)" -ForegroundColor Green
+                $allDocuments = @($docsNoTitle | Select-Object -First $targetDocumentCount)
+            }
+        } catch {
+            Write-Host "[!] Retry uden title-filter fejlede: $($_.Exception.Message)" -ForegroundColor Yellow
         }
-    } catch {
-        Write-Host "[!] Retry uden title-filter fejlede: $($_.Exception.Message)" -ForegroundColor Yellow
     }
-}
+
 
 Write-Host ""
 Write-Host "[+] TOTALT modtaget $($allDocuments.Count) dokumenter" -ForegroundColor Green
@@ -583,10 +581,10 @@ Write-Host "[*] Filtrerer dokumenter (KUN DOC/DOCX/PDF + Afgørelse af)..." -For
 
 # Filter documents
 $allowedExtensions = @('DOC', 'DOCX', 'PDF')
-if ($FileType -eq 'word') { 
-    $allowedExtensions = @('DOC', 'DOCX') 
-} elseif ($FileType -eq 'pdf') { 
-    $allowedExtensions = @('PDF') 
+if ($FileType -eq 'word') {
+    $allowedExtensions = @('DOC', 'DOCX')
+} elseif ($FileType -eq 'pdf') {
+    $allowedExtensions = @('PDF')
 }
 
 $filesToDownload = @()
@@ -601,52 +599,52 @@ foreach ($doc in $allDocuments) {
     $caseRecno = $doc.CaseRecno
     $caseTitle = if ($doc.CaseNameAndDescription) { $doc.CaseNameAndDescription } else { "" }
     $klassifikation = if ($doc.AccessCodeCode) { $doc.AccessCodeCode } else { "" }
-    
+
     # Build P360 links
     $documentLink = "$downloadBaseUrl/Biz?action=OpenDocument&documentRecno=$docRecno"
     $caseLink = "$downloadBaseUrl/Biz?action=OpenCase&caseRecno=$caseRecno"
-    
+
     # Document-level validation BEFORE processing files
     $skipDoc = $false
     $skipReason = ""
-    
+
     # Rule 1: Must start with "Afgørelse af"
     if ($docTitle -notmatch '^Afg.relse af') {
         $skipDoc = $true
         $skipReason = "Titel!=Afgørelse af"
     }
-    
+
     # Rule 2: Check klassifikation
     if (-not $skipDoc -and $klassifikation -match '2100|EFTERLEVELSE') {
         $skipDoc = $true
         $skipReason = "Klassifikation=Efterlevelse"
     }
-    
+
     # Rule 3: Check case title
     if (-not $skipDoc -and $caseTitle -match 'EFTERLEVELSE|OMKOSTNINGSDAEKNING') {
         $skipDoc = $true
         $skipReason = "Sagstitel=Ekskluderet"
     }
-    
+
     # Rule 4: Check document title for EFTERLEVELSE
     if (-not $skipDoc -and $docTitle -match 'EFTERLEVELSE') {
         $skipDoc = $true
         $skipReason = "Dokumenttitel=Efterlevelse"
     }
-    
+
     if ($skipDoc) {
         $skipped++
         if (-not $skipReasons.ContainsKey($skipReason)) {
             $skipReasons[$skipReason] = 0
         }
         $skipReasons[$skipReason]++
-        
+
         if ($skipped -le 10) {
             Write-Host "o SKIP: $skipReason | Titel='$docTitle'" -ForegroundColor DarkGray
         }
         continue
     }
-    
+
     # Process each file in document
     if ($doc.Files -and $doc.Files.Count -gt 0) {
         foreach ($file in $doc.Files) {
@@ -654,7 +652,7 @@ foreach ($doc in $allDocuments) {
             $fileTitle = $file.Title
             $fileFormat = $file.Format.ToUpper()
             $fileUrl = $file.URL
-            
+
             # Validate extension
             if ($fileFormat -notin $allowedExtensions) {
                 $skipped++
@@ -663,7 +661,7 @@ foreach ($doc in $allDocuments) {
                     $skipReasons[$reason] = 0
                 }
                 $skipReasons[$reason]++
-                
+
                 if ($skipped -le 10) {
                     Write-Host "o SKIP: $reason | Fil='$fileTitle'" -ForegroundColor DarkGray
                 }
@@ -684,12 +682,12 @@ foreach ($doc in $allDocuments) {
                 }
                 continue
             }
-            
+
             Write-Host "v OK: '$fileTitle' | Format=$fileFormat | FileRecno=$fileRecno" -ForegroundColor Green
             if ($fileTitle -and $docTitle -and $fileTitle -ne $docTitle) {
                 Write-Host "    Info: Filnavn afviger fra dokumenttitel. Dokumenttitel='$docTitle'" -ForegroundColor DarkGray
             }
-            
+
             $filesToDownload += @{
                 FileRecno = $fileRecno
                 Filename = $fileTitle
@@ -711,7 +709,7 @@ foreach ($doc in $allDocuments) {
             $skipReasons[$reason] = 0
         }
         $skipReasons[$reason]++
-        
+
         if ($skipped -le 10) {
             Write-Host "o SKIP: $reason | Titel='$docTitle'" -ForegroundColor DarkGray
         }
@@ -762,20 +760,20 @@ $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
 foreach ($file in $filesToDownload) {
     $fileNum = $downloaded + $errors + 1
     $total = $filesToDownload.Count
-    
+
     # Resolve case-based filename before save
     $caseFilename = Get-CaseBasedFilename -FileId $file.FileRecno -CaseNumber $file.CaseNumber -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
     $safeFilename = $caseFilename.SafeFilename
     $displayTargetName = $caseFilename.DisplayName
     $displayCaseNumber = $caseFilename.DisplayCaseNumber
     $outputPath = Join-Path $OutputDir $safeFilename
-    
+
     Write-Host "v [$fileNum/$total] '$safeFilename' -> Henter..." -ForegroundColor Cyan
     Write-Host "    URL: $($file.URL)" -ForegroundColor DarkGray
-    
+
     try {
         $startTime = Get-Date
-        
+
         # Download using URL from API with Windows Authentication
         $response = Invoke-WebRequest -Uri $file.URL -OutFile $outputPath -UseDefaultCredentials -WebSession $session -UseBasicParsing -PassThru
 
@@ -787,7 +785,7 @@ foreach ($file in $filesToDownload) {
         if ($response.StatusCode) {
             $statusCode = [string]$response.StatusCode
         }
-        
+
         $duration = (Get-Date) - $startTime
         $fileSize = (Get-Item $outputPath).Length / 1MB
         Write-Host "v [$fileNum/$total] '$safeFilename' -> OK ($("{0:N2}" -f $fileSize) MB, $("{0:N1}" -f $duration.TotalSeconds)s)" -ForegroundColor Green
@@ -799,7 +797,7 @@ foreach ($file in $filesToDownload) {
         }
 
         $downloaded++
-        
+
         # Add to list for markdown conversion
         $downloadedFiles += @{
             Path = $outputPath
@@ -819,12 +817,12 @@ foreach ($file in $filesToDownload) {
 
         Write-Host "    [*] Konverterer straks til markdown..." -ForegroundColor DarkGray
         $null = Convert-DownloadedFileToMarkdown -FileInfo $downloadedFiles[-1] -MarkdownDir $MarkdownDir -PdfToTextPath $pdfToTextPath
-        
+
     } catch {
         Write-Host "x [$fileNum/$total] '$($file.Filename)' -> FEJL ($($_.Exception.Message))" -ForegroundColor Red
         $errors++
     }
-    
+
     Start-Sleep -Milliseconds 300
 }
 
@@ -844,19 +842,19 @@ Write-Host ""
     Write-Host " SCANNER EKSISTERENDE FILER" -ForegroundColor Cyan
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host ""
-    
+
     $downloadedFiles = @()
-    
+
     if (Test-Path $OutputDir) {
         $existingFiles = Get-ChildItem -Path $OutputDir -File | Where-Object { $_.Extension -match '\.(pdf|docx?|doc)$' }
-        
+
         Write-Host "[+] Fundet $($existingFiles.Count) filer i $OutputDir" -ForegroundColor Green
-        
+
         foreach ($file in $existingFiles) {
             # Try to parse filename to extract metadata
             $basename = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
             $extension = $file.Extension.TrimStart('.').ToUpper()
-            
+
             # Try to extract case number from filename (e.g., "20_01453 Afgørelse")
             $caseNumber = ""
             $docNumber = ""
@@ -864,7 +862,7 @@ Write-Host ""
                 $caseNumber = $Matches[1] -replace '_', '/'
                 $docNumber = $caseNumber + "-X"  # We don't know the document suffix
             }
-            
+
             $downloadedFiles += @{
                 Path = $file.FullName
                 DocumentTitle = $basename
@@ -885,7 +883,7 @@ Write-Host ""
             $downloadedFiles = @($downloadedFiles | Select-Object -First $MaxFilesToProcess)
             Write-Host "[*] Begraenser konvertering til de foerste $($downloadedFiles.Count) filer" -ForegroundColor Yellow
         }
-        
+
         Write-Host "[+] $($downloadedFiles.Count) filer klar til konvertering" -ForegroundColor Green
     } else {
         Write-Host "[!] Download mappe findes ikke: $OutputDir" -ForegroundColor Red
@@ -894,7 +892,7 @@ Write-Host ""
         Stop-LogTranscript
         exit 1
     }
-    
+
     Write-Host ""
 }
 
@@ -922,7 +920,7 @@ if ($downloadedFiles.Count -gt 0) {
             # Convert flow: gå fil-for-fil, byg metadata/links først, lav markdown, og fortsæt til næste
             $null = Convert-DownloadedFileToMarkdown -FileInfo $file -MarkdownDir $MarkdownDir -PdfToTextPath $pdfToTextPath
             $converted++
-            
+
         } catch {
             Write-Host "    [MD] FEJL: $($_.Exception.Message)" -ForegroundColor Red
             $conversionErrors++
@@ -943,8 +941,8 @@ Write-Host "[*] Opretter markdown index..." -ForegroundColor Yellow
 $indexContent = @"
 # P360 Dokumenter - $Environment
 
-**Hentet:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  
-**Antal filer:** $($downloadedFiles.Count)  
+**Hentet:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')
+**Antal filer:** $($downloadedFiles.Count)
 **Filter:** $TitleFilter
 
 ## Dokumenter
@@ -954,7 +952,7 @@ $indexContent = @"
 foreach ($file in $downloadedFiles) {
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Filename)
     $markdownFile = "$baseName.md"
-    
+
     $indexContent += @"
 
 ### $($file.DocumentTitle)

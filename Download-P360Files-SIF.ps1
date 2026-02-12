@@ -5,6 +5,27 @@
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Log all console output to a file in the current working directory
+$logFileName = "p360_sif_download_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss')
+$logFilePath = Join-Path (Get-Location) $logFileName
+$transcriptStarted = $false
+
+try {
+    Start-Transcript -Path $logFilePath -Force | Out-Null
+    $transcriptStarted = $true
+    Write-Host "[+] Logger til fil: $logFilePath" -ForegroundColor Green
+} catch {
+    Write-Host "[!] Kunne ikke starte logfil: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+function Stop-LogTranscript {
+    if ($transcriptStarted) {
+        try {
+            Stop-Transcript | Out-Null
+        } catch {}
+    }
+}
+
 function Get-ExtensionFromFormat {
     param([string]$Format)
 
@@ -232,6 +253,7 @@ while ($hasMorePages) {
         Write-Host "FEJL: Kunne ikke kalde API" -ForegroundColor Red
         Write-Host $_.Exception.Message -ForegroundColor Red
         pause
+        Stop-LogTranscript
         exit 1
     }
 }
@@ -350,6 +372,9 @@ foreach ($doc in $allDocuments) {
             }
             
             Write-Host "v OK: '$fileTitle' | Format=$fileFormat | FileRecno=$fileRecno" -ForegroundColor Green
+            if ($fileTitle -and $docTitle -and $fileTitle -ne $docTitle) {
+                Write-Host "    Info: Filnavn afviger fra dokumenttitel. Dokumenttitel='$docTitle'" -ForegroundColor DarkGray
+            }
             
             $filesToDownload += @{
                 FileRecno = $fileRecno
@@ -390,12 +415,14 @@ Write-Host ""
 if ($filesToDownload.Count -eq 0) {
     Write-Host "INGEN filer at hente!" -ForegroundColor Red
     pause
+    Stop-LogTranscript
     exit 0
 }
 
 $confirm = Read-Host "Start download? (Y/N)"
 if ($confirm -ne 'Y' -and $confirm -ne 'y') {
     Write-Host "Afbrudt" -ForegroundColor Yellow
+    Stop-LogTranscript
     exit 0
 }
 
@@ -521,6 +548,7 @@ Write-Host ""
         Write-Host "[!] Download mappe findes ikke: $OutputDir" -ForegroundColor Red
         Write-Host "[!] Opret mappen og placer filer der, eller koer download mode" -ForegroundColor Yellow
         pause
+        Stop-LogTranscript
         exit 1
     }
     
@@ -747,3 +775,5 @@ $openFolder = Read-Host "Aaben markdown mappe? (Y/N)"
 if ($openFolder -eq 'Y' -or $openFolder -eq 'y') {
     Invoke-Item $MarkdownDir
 }
+
+Stop-LogTranscript

@@ -360,6 +360,11 @@ if ($MaxFilesToProcess -gt 0) {
 }
 Write-Host ""
 
+$effectiveMaxReturnedDocuments = $MaxReturnedDocuments
+if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
+    $effectiveMaxReturnedDocuments = $MaxFilesToProcess
+}
+
 if (-not $convertOnly) {
     # Configuration
     $baseUrl = if ($Environment -eq 'arkiv') { 
@@ -402,7 +407,7 @@ if (-not $convertOnly) {
     Write-Host "[+] AuthKey: $maskedKey" -ForegroundColor Green
     Write-Host "[+] ContactRecno: $ContactRecno" -ForegroundColor Green
     Write-Host "[+] Title filter: $TitleFilter" -ForegroundColor Green
-    Write-Host "[+] MaxReturnedDocuments pr. side: $MaxReturnedDocuments" -ForegroundColor Green
+    Write-Host "[+] MaxReturnedDocuments pr. side: $effectiveMaxReturnedDocuments" -ForegroundColor Green
     Write-Host "[+] Filtype: $FileType" -ForegroundColor Green
     Write-Host ""
 } # End if not convertOnly (config section)
@@ -430,13 +435,12 @@ Write-Host " HENTER DOKUMENTER FRA P360 SIF API" -ForegroundColor Cyan
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$effectiveMaxReturnedDocuments = $MaxReturnedDocuments
-if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
-    $effectiveMaxReturnedDocuments = $MaxFilesToProcess
-    Write-Host "[*] Justerer API-side stoerrelse til $effectiveMaxReturnedDocuments (samme som maks filer i koerslen)" -ForegroundColor Yellow
-}
-
 $targetDocumentCount = if ($MaxFilesToProcess -gt 0) { $MaxFilesToProcess } else { 0 }
+$singlePageOnly = ($MaxFilesToProcess -gt 0)
+
+if ($singlePageOnly) {
+    Write-Host "[*] Maks filer er sat - henter kun foerste side (side 0)." -ForegroundColor Yellow
+}
 
     # Build API request with pagination
 $apiUrl = "$baseUrl/DocumentService/GetDocuments?authkey=$AuthKey"
@@ -505,6 +509,9 @@ while ($hasMorePages) {
             if ($targetDocumentCount -gt 0 -and $allDocuments.Count -ge $targetDocumentCount) {
                 $allDocuments = @($allDocuments | Select-Object -First $targetDocumentCount)
                 Write-Host "    Naaede maks graense for dokumenter i koerslen ($targetDocumentCount). Stopper pagination." -ForegroundColor Gray
+                $hasMorePages = $false
+            } elseif ($singlePageOnly) {
+                Write-Host "    Stopper efter foerste side pga. maks filer i koerslen." -ForegroundColor Gray
                 $hasMorePages = $false
             } else {
                 # Check if there are more pages (API returns up to MaxReturnedDocuments per page)

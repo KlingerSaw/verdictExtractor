@@ -424,11 +424,19 @@ if (-not $pdfToTextPath) {
 }
 
 if (-not $convertOnly) {
-    Write-Host ""
-    Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host " HENTER DOKUMENTER FRA P360 SIF API" -ForegroundColor Cyan
-    Write-Host "====================================================================" -ForegroundColor Cyan
-    Write-Host ""
+Write-Host ""
+Write-Host "====================================================================" -ForegroundColor Cyan
+Write-Host " HENTER DOKUMENTER FRA P360 SIF API" -ForegroundColor Cyan
+Write-Host "====================================================================" -ForegroundColor Cyan
+Write-Host ""
+
+$effectiveMaxReturnedDocuments = $MaxReturnedDocuments
+if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
+    $effectiveMaxReturnedDocuments = $MaxFilesToProcess
+    Write-Host "[*] Justerer API-side stoerrelse til $effectiveMaxReturnedDocuments (samme som maks filer i koerslen)" -ForegroundColor Yellow
+}
+
+$targetDocumentCount = if ($MaxFilesToProcess -gt 0) { $MaxFilesToProcess } else { 0 }
 
     # Build API request with pagination
 $apiUrl = "$baseUrl/DocumentService/GetDocuments?authkey=$AuthKey"
@@ -486,7 +494,7 @@ while ($hasMorePages) {
 
     # Call API
     try {
-        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $MaxReturnedDocuments
+        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $effectiveMaxReturnedDocuments
         $response = $result.Response
         $pageDocuments = $result.Documents
         
@@ -494,11 +502,17 @@ while ($hasMorePages) {
             Write-Host "    Modtaget $($pageDocuments.Count) dokumenter" -ForegroundColor Gray
             $allDocuments += $pageDocuments
             
-            # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
-            if ($pageDocuments.Count -ge $MaxReturnedDocuments) {
-                $page++
-            } else {
+            if ($targetDocumentCount -gt 0 -and $allDocuments.Count -ge $targetDocumentCount) {
+                $allDocuments = @($allDocuments | Select-Object -First $targetDocumentCount)
+                Write-Host "    Naaede maks graense for dokumenter i koerslen ($targetDocumentCount). Stopper pagination." -ForegroundColor Gray
                 $hasMorePages = $false
+            } else {
+                # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
+                if ($pageDocuments.Count -ge $effectiveMaxReturnedDocuments) {
+                    $page++
+                } else {
+                    $hasMorePages = $false
+                }
             }
         } else {
             $hasMorePages = $false

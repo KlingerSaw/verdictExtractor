@@ -360,10 +360,12 @@ if ($MaxFilesToProcess -gt 0) {
 }
 Write-Host ""
 
-$effectiveMaxReturnedDocuments = $MaxReturnedDocuments
-if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $effectiveMaxReturnedDocuments) {
-    $effectiveMaxReturnedDocuments = $MaxFilesToProcess
+$requestedDocumentLimit = $MaxReturnedDocuments
+if ($MaxFilesToProcess -gt 0 -and $MaxFilesToProcess -lt $requestedDocumentLimit) {
+    $requestedDocumentLimit = $MaxFilesToProcess
 }
+
+$apiPageChunkSize = 100
 
 if (-not $convertOnly) {
     # Configuration
@@ -407,7 +409,8 @@ if (-not $convertOnly) {
     Write-Host "[+] AuthKey: $maskedKey" -ForegroundColor Green
     Write-Host "[+] ContactRecno: $ContactRecno" -ForegroundColor Green
     Write-Host "[+] Title filter: $TitleFilter" -ForegroundColor Green
-    Write-Host "[+] MaxReturnedDocuments pr. side: $effectiveMaxReturnedDocuments" -ForegroundColor Green
+    Write-Host "[+] Maks dokumenter i alt: $requestedDocumentLimit" -ForegroundColor Green
+    Write-Host "[+] API hentes i chunks af maks: $apiPageChunkSize" -ForegroundColor Green
     Write-Host "[+] Filtype: $FileType" -ForegroundColor Green
     Write-Host ""
 } # End if not convertOnly (config section)
@@ -435,12 +438,7 @@ Write-Host " HENTER DOKUMENTER FRA P360 SIF API" -ForegroundColor Cyan
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$targetDocumentCount = if ($MaxFilesToProcess -gt 0) { $MaxFilesToProcess } else { 0 }
-$singlePageOnly = ($MaxFilesToProcess -gt 0)
-
-if ($singlePageOnly) {
-    Write-Host "[*] Maks filer er sat - henter kun foerste side (side 0)." -ForegroundColor Yellow
-}
+$targetDocumentCount = $requestedDocumentLimit
 
     # Build API request with pagination
 $apiUrl = "$baseUrl/DocumentService/GetDocuments?authkey=$AuthKey"
@@ -490,15 +488,23 @@ $page = 0
 $hasMorePages = $true
 
 while ($hasMorePages) {
+    $remainingDocuments = $targetDocumentCount - $allDocuments.Count
+    if ($remainingDocuments -le 0) {
+        $hasMorePages = $false
+        break
+    }
+
+    $pageSize = [Math]::Min($apiPageChunkSize, $remainingDocuments)
+
     if ($page -eq 0) {
-        Write-Host "[*] Kalder API (side $page)..." -ForegroundColor Yellow
+        Write-Host "[*] Kalder API (side $page, antal $pageSize)..." -ForegroundColor Yellow
     } else {
-        Write-Host "[*] Henter side $page..." -ForegroundColor Yellow
+        Write-Host "[*] Henter side $page (antal $pageSize)..." -ForegroundColor Yellow
     }
 
     # Call API
     try {
-        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $effectiveMaxReturnedDocuments
+        $result = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page $page -ContactRecno $ContactRecno -TitleFilter $TitleFilter -MaxReturnedDocuments $pageSize
         $response = $result.Response
         $pageDocuments = $result.Documents
         
@@ -506,16 +512,13 @@ while ($hasMorePages) {
             Write-Host "    Modtaget $($pageDocuments.Count) dokumenter" -ForegroundColor Gray
             $allDocuments += $pageDocuments
             
-            if ($targetDocumentCount -gt 0 -and $allDocuments.Count -ge $targetDocumentCount) {
+            if ($allDocuments.Count -ge $targetDocumentCount) {
                 $allDocuments = @($allDocuments | Select-Object -First $targetDocumentCount)
                 Write-Host "    Naaede maks graense for dokumenter i koerslen ($targetDocumentCount). Stopper pagination." -ForegroundColor Gray
                 $hasMorePages = $false
-            } elseif ($singlePageOnly) {
-                Write-Host "    Stopper efter foerste side pga. maks filer i koerslen." -ForegroundColor Gray
-                $hasMorePages = $false
             } else {
                 # Check if there are more pages (API returns up to MaxReturnedDocuments per page)
-                if ($pageDocuments.Count -ge $effectiveMaxReturnedDocuments) {
+                if ($pageDocuments.Count -ge $pageSize) {
                     $page++
                 } else {
                     $hasMorePages = $false
@@ -539,13 +542,14 @@ if ($allDocuments.Count -eq 0 -and -not [string]::IsNullOrWhiteSpace($TitleFilte
     Write-Host "[!] API returnerede 0 dokumenter med Title-filter. Prøver igen uden server-side title-filter..." -ForegroundColor Yellow
 
     try {
-        $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter "" -MaxReturnedDocuments $MaxReturnedDocuments
+        $fallbackPageSize = [Math]::Min($apiPageChunkSize, $targetDocumentCount)
+        $resultNoTitle = Invoke-GetDocumentsPage -ApiUrl $apiUrl -Page 0 -ContactRecno $ContactRecno -TitleFilter "" -MaxReturnedDocuments $fallbackPageSize
         $docsNoTitle = $resultNoTitle.Documents
         Write-Host "[+] Uden server-side title-filter fandt API $($docsNoTitle.Count) dokumenter på side 0" -ForegroundColor Green
 
         if ($docsNoTitle.Count -gt 0) {
             Write-Host "[+] Fortsaetter med resultater uden server-side title-filter (lokal filtrering bevares)" -ForegroundColor Green
-            $allDocuments = $docsNoTitle
+            $allDocuments = @($docsNoTitle | Select-Object -First $targetDocumentCount)
         }
     } catch {
         Write-Host "[!] Retry uden title-filter fejlede: $($_.Exception.Message)" -ForegroundColor Yellow

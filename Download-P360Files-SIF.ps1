@@ -9,7 +9,8 @@ param(
     [string]$AuthKey,
     [int]$ContactRecno,
     [string]$TitleFilter,
-    [int]$MaxReturnedDocuments
+    [int]$MaxReturnedDocuments,
+    [int]$MaxFilesToProcess
 )
 
 # Set console encoding to UTF-8 for Danish characters
@@ -312,6 +313,7 @@ if (-not $MarkdownDir) { $MarkdownDir = ".\prod_markdown" }
 if (-not $ContactRecno) { $ContactRecno = 100016 }
 if (-not $TitleFilter) { $TitleFilter = "Afgørelse af%" }
 if (-not $MaxReturnedDocuments -or $MaxReturnedDocuments -lt 1) { $MaxReturnedDocuments = 100 }
+if (-not $MaxFilesToProcess -or $MaxFilesToProcess -lt 0) { $MaxFilesToProcess = 0 }
 
 Write-Host ""
 Write-Host "====================================================================" -ForegroundColor Cyan
@@ -331,6 +333,26 @@ if ($convertOnly) {
     Write-Host "[*] Mode: KUN KONVERTERING (springer download over)" -ForegroundColor Yellow
     Write-Host ""
 }
+
+if ($MaxFilesToProcess -le 0) {
+    $maxFilesInput = Read-Host "Maks antal filer at behandle? (tryk Enter for alle)"
+    if (-not [string]::IsNullOrWhiteSpace($maxFilesInput)) {
+        $parsedMaxFiles = 0
+        if ([int]::TryParse($maxFilesInput.Trim(), [ref]$parsedMaxFiles) -and $parsedMaxFiles -gt 0) {
+            $MaxFilesToProcess = $parsedMaxFiles
+        } else {
+            Write-Host "[!] Ugyldigt antal - bruger alle filer" -ForegroundColor Yellow
+            $MaxFilesToProcess = 0
+        }
+    }
+}
+
+if ($MaxFilesToProcess -gt 0) {
+    Write-Host "[+] Maks filer der behandles i koerslen: $MaxFilesToProcess" -ForegroundColor Green
+} else {
+    Write-Host "[+] Maks filer der behandles i koerslen: Alle" -ForegroundColor Green
+}
+Write-Host ""
 
 if (-not $convertOnly) {
     # Configuration
@@ -654,6 +676,12 @@ foreach ($reason in $skipReasons.Keys | Sort-Object) {
 }
 Write-Host ""
 
+if ($MaxFilesToProcess -gt 0 -and $filesToDownload.Count -gt $MaxFilesToProcess) {
+    $filesToDownload = @($filesToDownload | Select-Object -First $MaxFilesToProcess)
+    Write-Host "[*] Begraenser download til de foerste $($filesToDownload.Count) filer" -ForegroundColor Yellow
+    Write-Host ""
+}
+
 if ($filesToDownload.Count -eq 0) {
     Write-Host "INGEN filer at hente!" -ForegroundColor Red
     pause
@@ -802,6 +830,11 @@ Write-Host ""
                 FileRecno = ""
             }
         }
+
+        if ($MaxFilesToProcess -gt 0 -and $downloadedFiles.Count -gt $MaxFilesToProcess) {
+            $downloadedFiles = @($downloadedFiles | Select-Object -First $MaxFilesToProcess)
+            Write-Host "[*] Begraenser konvertering til de foerste $($downloadedFiles.Count) filer" -ForegroundColor Yellow
+        }
         
         Write-Host "[+] $($downloadedFiles.Count) filer klar til konvertering" -ForegroundColor Green
     } else {
@@ -861,7 +894,7 @@ $indexContent = @"
 # P360 Dokumenter - $Environment
 
 **Hentet:** $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  
-**Antal filer:** $downloaded  
+**Antal filer:** $($downloadedFiles.Count)  
 **Filter:** $TitleFilter
 
 ## Dokumenter

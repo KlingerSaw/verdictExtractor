@@ -288,7 +288,7 @@ if (-not $FileType) { $FileType = "both" }
 if (-not $OutputDir) { $OutputDir = ".\prod_downloads" }
 if (-not $MarkdownDir) { $MarkdownDir = ".\prod_markdown" }
 if (-not $ContactRecno) { $ContactRecno = 100016 }
-if (-not $TitleFilter) { $TitleFilter = "" }
+if (-not $TitleFilter) { $TitleFilter = "Afgørelse af%" }
 if (-not $MaxReturnedDocuments -or $MaxReturnedDocuments -lt 0) { $MaxReturnedDocuments = 0 }
 if (-not $MaxFilesToProcess -or $MaxFilesToProcess -lt 0) { $MaxFilesToProcess = 0 }
 
@@ -340,7 +340,7 @@ if ($MaxFilesToProcess -gt 0 -and ($requestedDocumentLimit -eq 0 -or $MaxFilesTo
     $requestedDocumentLimit = $MaxFilesToProcess
 }
 
-$apiPageChunkSize = 100
+$apiPageChunkSize = 200
 
 if (-not $convertOnly) {
     # Configuration
@@ -438,15 +438,14 @@ function Invoke-GetDocumentsPage {
         [int]$MaxReturnedDocuments
     )
 
+    $normalizedTitleFilter = if ([string]::IsNullOrWhiteSpace($TitleFilter)) { "Afgørelse af%" } else { $TitleFilter.Trim() }
+
     $parameter = @{
         Page = $Page
         MaxReturnedDocuments = $MaxReturnedDocuments
         IncludeCustomFields = "false"
         ContactRecnos = @($ContactRecno)
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($TitleFilter)) {
-        $parameter.Title = $TitleFilter
+        Title = $normalizedTitleFilter
     }
 
     $requestBody = @{ parameter = $parameter } | ConvertTo-Json -Depth 10
@@ -566,7 +565,7 @@ $filesToDownload = @()
 $skipped = 0
 $skipReasons = @{}
 $decisionTitlePattern = '^Afg.relse af'
-$decisionFileTitlePattern = 'Afg.relse'
+$decisionFileTitlePattern = '(?i)afg.relse'
 
 foreach ($doc in $allDocuments) {
     $docRecno = $doc.Recno
@@ -645,10 +644,10 @@ foreach ($doc in $allDocuments) {
                 continue
             }
 
-            # Rule 5: File title from SIF must contain "Afgørelse"
+            # Rule 5: File title from SIF must at minimum contain "Afgørelse"
             if ($fileTitle -notmatch $decisionFileTitlePattern) {
                 $skipped++
-                $reason = "Filnavn mangler Afgørelse"
+                $reason = "Filnavn mangler minimum Afgørelse"
                 if (-not $skipReasons.ContainsKey($reason)) {
                     $skipReasons[$reason] = 0
                 }

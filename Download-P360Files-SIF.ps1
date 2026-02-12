@@ -88,6 +88,7 @@ function Get-ResolvedFilename {
 
 function Get-CaseBasedFilename {
     param(
+        [string]$FileId,
         [string]$CaseNumber,
         [string]$Format,
         [string]$FallbackTitle,
@@ -105,8 +106,10 @@ function Get-CaseBasedFilename {
         $extension = [System.IO.Path]::GetExtension($resolvedFallback)
     }
 
+    $resolvedFileId = if ([string]::IsNullOrWhiteSpace($FileId)) { "UkendtFilId" } else { $FileId.Trim() }
+
     if (-not [string]::IsNullOrWhiteSpace($displayCaseNumber)) {
-        $displayName = "$displayCaseNumber Afgørelse"
+        $displayName = "$resolvedFileId $displayCaseNumber Afgørelse"
         $safeName = ($displayName -replace '/', '_') + $extension
 
         return @{
@@ -116,10 +119,12 @@ function Get-CaseBasedFilename {
         }
     }
 
-    $fallback = Get-ResolvedFilename -RawTitle $FallbackTitle -Format $Format -SourceUrl $SourceUrl
+    $safeName = "$resolvedFileId UkendtSagsnummer Afgørelse$extension"
+    $displayName = "$resolvedFileId UkendtSagsnummer Afgørelse"
+
     return @{
-        SafeFilename = $fallback
-        DisplayName = [System.IO.Path]::GetFileNameWithoutExtension($fallback)
+        SafeFilename = $safeName
+        DisplayName = $displayName
         DisplayCaseNumber = ""
     }
 }
@@ -507,7 +512,7 @@ foreach ($file in $filesToDownload) {
     $total = $filesToDownload.Count
     
     # Resolve case-based filename before save
-    $caseFilename = Get-CaseBasedFilename -CaseNumber $file.CaseNumber -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
+    $caseFilename = Get-CaseBasedFilename -FileId $file.FileRecno -CaseNumber $file.CaseNumber -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
     $safeFilename = $caseFilename.SafeFilename
     $displayTargetName = $caseFilename.DisplayName
     $displayCaseNumber = $caseFilename.DisplayCaseNumber

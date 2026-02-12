@@ -158,36 +158,7 @@ function Build-MarkdownHeader {
         $documentUrl = $FileInfo.SourceUrl
     }
 
-    $metadataLines = @(
-        "document_title: '$($FileInfo.DocumentTitle -replace "'", "''")'",
-        "document_number: '$($FileInfo.DocumentNumber -replace "'", "''")'",
-        "case_number: '$($FileInfo.CaseNumber -replace "'", "''")'",
-        "format: '$($FormatLabel -replace "'", "''")'"
-    )
-
-    if ($FileInfo.FileRecno) {
-        $metadataLines += "file_recno: '$($FileInfo.FileRecno -replace "'", "''")'"
-    }
-
-    if ($FileInfo.SourceUrl) {
-        $metadataLines += "source_url: '$($FileInfo.SourceUrl -replace "'", "''")'"
-    }
-
-    if ($FileInfo.ResponseContentType) {
-        $metadataLines += "response_content_type: '$($FileInfo.ResponseContentType -replace "'", "''")'"
-    }
-
-    if ($FileInfo.DocumentLink) {
-        $metadataLines += "document_link: '$($FileInfo.DocumentLink -replace "'", "''")'"
-    }
-
-    if ($FileInfo.CaseLink) {
-        $metadataLines += "case_link: '$($FileInfo.CaseLink -replace "'", "''")'"
-    }
-
-    $markdown = "---`n"
-    $markdown += ($metadataLines -join "`n") + "`n"
-    $markdown += "---`n`n"
+    $markdown = ""
     $markdown += "# $($FileInfo.DocumentTitle)`n`n"
     $markdown += "**Dokument:** $($FileInfo.DocumentNumber)`n"
     $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
@@ -196,7 +167,7 @@ function Build-MarkdownHeader {
     if ($documentUrl -or $FileInfo.CaseLink) {
         $markdown += "**P360 Links:**`n"
         if ($documentUrl) {
-            $markdown += "- [Åbn dokument]($documentUrl)`n"
+            $markdown += "- [Hent fil]($documentUrl)`n"
         }
         if ($FileInfo.DocumentLink) {
             $markdown += "- [Dokumentkort]($($FileInfo.DocumentLink))`n"
@@ -207,7 +178,7 @@ function Build-MarkdownHeader {
         $markdown += "`n"
     }
 
-    $markdown += "---`n`n"
+    $markdown += "`n"
     return $markdown
 }
 
@@ -607,8 +578,8 @@ foreach ($doc in $allDocuments) {
     $klassifikation = if ($doc.AccessCodeCode) { $doc.AccessCodeCode } else { "" }
 
     # Build P360 links
-    $documentLink = "$downloadBaseUrl/Biz?action=OpenDocument&documentRecno=$docRecno"
-    $caseLink = "$downloadBaseUrl/Biz?action=OpenCase&caseRecno=$caseRecno"
+    $documentLink = "$downloadBaseUrl/locator/DMS/Document/Details/Simplified/2?module=Document&subtype=2&recno=$docRecno"
+    $caseLink = "$downloadBaseUrl/locator/DMS/Case/Details/Simplified/13?module=Case&subtype=13&recno=$caseRecno"
 
     # Document-level validation BEFORE processing files
     $skipDoc = $false
@@ -968,7 +939,9 @@ foreach ($file in $downloadedFiles) {
 - **Fil:** ``$($file.Filename)`` ($($file.Format))
 - **Kilde URL (SIF):** $(if ($file.SourceUrl) { "[$($file.SourceUrl)]($($file.SourceUrl))" } else { "-" })
 - **P360 Links:**
-  - [Åbn dokument]($(if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }))
+  - [Hent fil]($(if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }))
+  - [Dokumentkort]($($file.DocumentLink))
+  - [Sagskort]($($file.CaseLink))
 - **Lokal fil:** [``$($file.Filename)``](../prod_downloads/$($file.Filename))
 - **Markdown:** [``$markdownFile``](./$markdownFile)
 

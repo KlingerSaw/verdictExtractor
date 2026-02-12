@@ -26,6 +26,16 @@ function Stop-LogTranscript {
     }
 }
 
+function Remove-MarkdownControlChars {
+    param([string]$Text)
+
+    if ($null -eq $Text) {
+        return ""
+    }
+
+    return ($Text -replace "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "")
+}
+
 function Get-ExtensionFromFormat {
     param([string]$Format)
 
@@ -684,6 +694,7 @@ if ($downloadedFiles.Count -gt 0) {
             
             if ($file.Format -eq 'PDF') {
                 # PDF to Markdown
+                $documentUrl = if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }
                 $markdown = "# $($file.DocumentTitle)`n`n"
                 $markdown += "**Dokument:** $($file.DocumentNumber)`n"
                 $markdown += "**Sag:** $($file.CaseNumber)`n"
@@ -694,9 +705,10 @@ if ($downloadedFiles.Count -gt 0) {
                 if ($file.ResponseContentType) {
                     $markdown += "**Content-Type:** $($file.ResponseContentType)`n"
                 }
-                $markdown += "**P360 Links:**`n"
-                $markdown += "- [Åbn dokument]($($file.DocumentLink))`n"
-                $markdown += "- [Åbn sag]($($file.CaseLink))`n`n"
+                if ($documentUrl) {
+                    $markdown += "**P360 Links:**`n"
+                    $markdown += "- [Åbn dokument]($documentUrl)`n`n"
+                }
                 $markdown += "---`n`n"
                 
                 if ($pdfToTextPath) {
@@ -723,6 +735,7 @@ if ($downloadedFiles.Count -gt 0) {
                 
             } elseif ($file.Format -eq 'DOCX' -or $file.Format -eq 'DOC') {
                 # Word to Markdown via Word COM object
+                $documentUrl = if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }
                 $markdown = "# $($file.DocumentTitle)`n`n"
                 $markdown += "**Dokument:** $($file.DocumentNumber)`n"
                 $markdown += "**Sag:** $($file.CaseNumber)`n"
@@ -733,10 +746,9 @@ if ($downloadedFiles.Count -gt 0) {
                 if ($file.ResponseContentType) {
                     $markdown += "**Content-Type:** $($file.ResponseContentType)`n"
                 }
-                if ($file.DocumentLink) {
+                if ($documentUrl) {
                     $markdown += "**P360 Links:**`n"
-                    $markdown += "- [Åbn dokument]($($file.DocumentLink))`n"
-                    $markdown += "- [Åbn sag]($($file.CaseLink))`n`n"
+                    $markdown += "- [Åbn dokument]($documentUrl)`n`n"
                 }
                 $markdown += "---`n`n"
                 
@@ -772,7 +784,7 @@ if ($downloadedFiles.Count -gt 0) {
             
             # Save markdown with UTF-8 BOM
             $utf8 = New-Object System.Text.UTF8Encoding $true
-            [System.IO.File]::WriteAllText($markdownPath, $markdown, $utf8)
+            [System.IO.File]::WriteAllText($markdownPath, (Remove-MarkdownControlChars -Text $markdown), $utf8)
             
             Write-Host "OK" -ForegroundColor Green
             $converted++
@@ -818,8 +830,7 @@ foreach ($file in $downloadedFiles) {
 - **Fil:** ``$($file.Filename)`` ($($file.Format))
 - **Kilde URL (SIF):** $(if ($file.SourceUrl) { "[$($file.SourceUrl)]($($file.SourceUrl))" } else { "-" })
 - **P360 Links:**
-  - [Åbn dokument i P360]($($file.DocumentLink))
-  - [Åbn sag i P360]($($file.CaseLink))
+  - [Åbn dokument]($(if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }))
 - **Lokal fil:** [``$($file.Filename)``](../prod_downloads/$($file.Filename))
 - **Markdown:** [``$markdownFile``](./$markdownFile)
 
@@ -828,7 +839,7 @@ foreach ($file in $downloadedFiles) {
 
 $indexPath = Join-Path $MarkdownDir "INDEX.md"
 $utf8 = New-Object System.Text.UTF8Encoding $true
-[System.IO.File]::WriteAllText($indexPath, $indexContent, $utf8)
+[System.IO.File]::WriteAllText($indexPath, (Remove-MarkdownControlChars -Text $indexContent), $utf8)
 
 Write-Host "[+] Markdown index oprettet: $indexPath" -ForegroundColor Green
 

@@ -297,16 +297,9 @@ foreach ($row in $data) {
             $caseNumber = $Matches[1]
         }
         
-        # Build filename: "XX_YYYYY Afgørelse.ext"
-        $newFilename = if ($caseNumber) {
-            # Replace / with _ for Windows compatibility
-            $safeCaseNumber = $caseNumber -replace '/', '_'
-            "$safeCaseNumber Afgørelse.$($extension.ToLower())"
-        } elseif ($fileName) {
-            $fileName
-        } else {
-            "$fileId.$($extension.ToLower())"
-        }
+        # Build filename: "FileID XX_YYYYY Afgørelse.ext"
+        $safeCaseNumber = if ($caseNumber) { $caseNumber -replace '/', '_' } else { "UkendtSagsnummer" }
+        $newFilename = "$fileId $safeCaseNumber Afgørelse.$($extension.ToLower())"
         
         Write-Host "v OK: '$docName' | Ext='$extension' | FileId='$fileId'" -ForegroundColor Green
         

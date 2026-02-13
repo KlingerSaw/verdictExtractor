@@ -1,23 +1,66 @@
 ﻿# P360 Document Downloader - Excel Edition (ARKIV)
 # Læser data fra Excel export i stedet for API
 
-# Set console encoding to UTF-8 for Danish characters
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
-$OutputEncoding = [System.Text.Encoding]::UTF8
-
 param(
     [string]$ExcelFile,
     [ValidateSet("word", "pdf", "both")][string]$FileType,
     [string]$Username,
     [string]$Password,
     [string]$OutputDir,
-    [string]$MarkdownDir
+    [string]$MarkdownDir,
+    [int]$MaxFilesToProcess,
+    [int]$RowsToSkip
 )
+
+# Set console encoding to UTF-8 for Danish characters
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+
+function Remove-MarkdownControlChars {
+    param([string]$Text)
+
+    if ($null -eq $Text) {
+        return ""
+    }
+
+    return ($Text -replace "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "")
+}
+
+function Build-MarkdownHeader {
+    param(
+        [hashtable]$FileInfo,
+        [string]$FormatLabel
+    )
+
+    $downloadUrl = $null
+    if ($FileInfo.FileId) {
+        $downloadUrl = "https://esdh-nh-arkiv/GetFile.aspx?fileId=$($FileInfo.FileId)&redirect=true"
+    }
+
+    $markdown = ""
+    $markdown += "# $($FileInfo.Title)`n`n"
+    $markdown += "**Dokument:** $($FileInfo.DocumentNumber)`n"
+    $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
+    $markdown += "**Format:** $FormatLabel`n"
+    $markdown += "**FileID:** $($FileInfo.FileId)`n"
+
+    if ($downloadUrl) {
+        $markdown += "**P360 Links:**`n"
+        $markdown += "- [Hent fil]($downloadUrl)`n`n"
+    } else {
+        $markdown += "`n"
+    }
+
+    $markdown += "---`n`n"
+    return $markdown
+}
 
 # Set defaults
 if (-not $FileType) { $FileType = "both" }
 if (-not $OutputDir) { $OutputDir = ".\arkiv_downloads" }
 if (-not $MarkdownDir) { $MarkdownDir = ".\arkiv_markdown" }
+if (-not $MaxFilesToProcess -or $MaxFilesToProcess -lt 0) { $MaxFilesToProcess = 0 }
+if (-not $RowsToSkip -or $RowsToSkip -lt 0) { $RowsToSkip = 0 }
 
 Write-Host ""
 Write-Host "====================================================================" -ForegroundColor Cyan
@@ -37,6 +80,40 @@ if ($convertOnly) {
     Write-Host "[*] Mode: KUN KONVERTERING (springer download over)" -ForegroundColor Yellow
     Write-Host ""
 }
+
+if ($RowsToSkip -le 0) {
+    $rowsToSkipInput = Read-Host "Hvor mange indledende raekker skal springes over i Excel? (tryk Enter for 0)"
+    if (-not [string]::IsNullOrWhiteSpace($rowsToSkipInput)) {
+        $parsedRowsToSkip = 0
+        if ([int]::TryParse($rowsToSkipInput.Trim(), [ref]$parsedRowsToSkip) -and $parsedRowsToSkip -ge 0) {
+            $RowsToSkip = $parsedRowsToSkip
+        } else {
+            Write-Host "[!] Ugyldigt antal - bruger 0" -ForegroundColor Yellow
+            $RowsToSkip = 0
+        }
+    }
+}
+
+if ($MaxFilesToProcess -le 0) {
+    $maxFilesInput = Read-Host "Maks antal filer at behandle? (tryk Enter for alle)"
+    if (-not [string]::IsNullOrWhiteSpace($maxFilesInput)) {
+        $parsedMaxFiles = 0
+        if ([int]::TryParse($maxFilesInput.Trim(), [ref]$parsedMaxFiles) -and $parsedMaxFiles -gt 0) {
+            $MaxFilesToProcess = $parsedMaxFiles
+        } else {
+            Write-Host "[!] Ugyldigt antal - bruger alle filer" -ForegroundColor Yellow
+            $MaxFilesToProcess = 0
+        }
+    }
+}
+
+Write-Host "[+] Raekker der springes over i starten af Excel: $RowsToSkip" -ForegroundColor Green
+if ($MaxFilesToProcess -gt 0) {
+    Write-Host "[+] Maks filer der behandles i koerslen: $MaxFilesToProcess" -ForegroundColor Green
+} else {
+    Write-Host "[+] Maks filer der behandles i koerslen: Alle" -ForegroundColor Green
+}
+Write-Host ""
 
 # Auto-detect Excel file
 $scriptDir = if ($PSScriptRoot) {
@@ -126,8 +203,9 @@ try {
     # Try using ImportExcel module first (if available)
     if (Get-Module -ListAvailable -Name ImportExcel) {
         Import-Module ImportExcel
-        $data = Import-Excel -Path $ExcelFile
-        Write-Host "[+] Bruger ImportExcel module" -ForegroundColor Green
+        $startRow = 1 + $RowsToSkip
+        $data = Import-Excel -Path $ExcelFile -StartRow $startRow
+        Write-Host "[+] Bruger ImportExcel module (StartRow=$startRow)" -ForegroundColor Green
     } else {
         # Fallback to Excel COM object
         $excel = New-Object -ComObject Excel.Application
@@ -144,10 +222,15 @@ try {
         
         Write-Host "[+] Excel aabn: $rowCount raekker, $colCount kolonner" -ForegroundColor Green
         
-        # Read headers (row 1)
+        # Read headers
+        $headerRow = 1 + $RowsToSkip
+        if ($headerRow -gt $rowCount) {
+            throw "Header row ($headerRow) er udenfor dataomraadet ($rowCount raekker)"
+        }
+
         $headers = @{}
         for ($col = 1; $col -le $colCount; $col++) {
-            $headerCell = $worksheet.Cells.Item(1, $col)
+            $headerCell = $worksheet.Cells.Item($headerRow, $col)
             $headerName = $headerCell.Text
             if ($headerName) {
                 # Remove (D)(P) suffix
@@ -160,7 +243,8 @@ try {
         
         # Build data array
         $data = @()
-        for ($row = 2; $row -le $rowCount; $row++) {
+        $firstDataRow = $headerRow + 1
+        for ($row = $firstDataRow; $row -le $rowCount; $row++) {
             $rowData = @{}
             foreach ($header in $headers.Keys) {
                 $col = $headers[$header]
@@ -324,6 +408,11 @@ foreach ($row in $data) {
 }
 
 Write-Host ""
+if ($MaxFilesToProcess -gt 0 -and $filesToDownload.Count -gt $MaxFilesToProcess) {
+    $filesToDownload = @($filesToDownload | Select-Object -First $MaxFilesToProcess)
+    Write-Host "[!] Begraenser til foerste $MaxFilesToProcess filer" -ForegroundColor Yellow
+}
+
 Write-Host "[+] $($filesToDownload.Count) filer klar til download" -ForegroundColor Green
 Write-Host "[+] $skipped filer sprunget over:" -ForegroundColor Yellow
 foreach ($reason in $skipReasons.Keys | Sort-Object) {
@@ -527,12 +616,7 @@ if ($downloadedFiles.Count -gt 0) {
             
             if ($file.Extension -eq 'PDF') {
                 # PDF to Markdown
-                $markdown = "# $($file.Title)`n`n"
-                $markdown += "**Dokument:** $($file.DocumentNumber)`n"
-                $markdown += "**Sag:** $($file.CaseNumber)`n"
-                $markdown += "**Format:** PDF`n"
-                $markdown += "**FileID:** $($file.FileId)`n`n"
-                $markdown += "---`n`n"
+                $markdown = Build-MarkdownHeader -FileInfo $file -FormatLabel "PDF"
                 
                 if ($pdfToTextPath) {
                     # Extract text using pdftotext
@@ -558,12 +642,7 @@ if ($downloadedFiles.Count -gt 0) {
                 
             } elseif ($file.Extension -eq 'DOCX' -or $file.Extension -eq 'DOC') {
                 # Word to Markdown via Word COM object
-                $markdown = "# $($file.Title)`n`n"
-                $markdown += "**Dokument:** $($file.DocumentNumber)`n"
-                $markdown += "**Sag:** $($file.CaseNumber)`n"
-                $markdown += "**Format:** $($file.Extension)`n"
-                $markdown += "**FileID:** $($file.FileId)`n`n"
-                $markdown += "---`n`n"
+                $markdown = Build-MarkdownHeader -FileInfo $file -FormatLabel $file.Extension
                 
                 try {
                     # Use Word COM object to convert
@@ -597,7 +676,7 @@ if ($downloadedFiles.Count -gt 0) {
             
             # Save markdown with UTF-8 BOM
             $utf8 = New-Object System.Text.UTF8Encoding $true
-            [System.IO.File]::WriteAllText($markdownPath, $markdown, $utf8)
+            [System.IO.File]::WriteAllText($markdownPath, (Remove-MarkdownControlChars -Text $markdown), $utf8)
             
             Write-Host "OK" -ForegroundColor Green
             $converted++

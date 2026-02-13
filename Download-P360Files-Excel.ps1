@@ -81,18 +81,6 @@ if ($convertOnly) {
     Write-Host ""
 }
 
-if ($RowsToSkip -le 0) {
-    $rowsToSkipInput = Read-Host "Hvor mange indledende raekker skal springes over i Excel? (tryk Enter for 0)"
-    if (-not [string]::IsNullOrWhiteSpace($rowsToSkipInput)) {
-        $parsedRowsToSkip = 0
-        if ([int]::TryParse($rowsToSkipInput.Trim(), [ref]$parsedRowsToSkip) -and $parsedRowsToSkip -ge 0) {
-            $RowsToSkip = $parsedRowsToSkip
-        } else {
-            Write-Host "[!] Ugyldigt antal - bruger 0" -ForegroundColor Yellow
-            $RowsToSkip = 0
-        }
-    }
-}
 
 if ($MaxFilesToProcess -le 0) {
     $maxFilesInput = Read-Host "Maks antal filer at behandle? (tryk Enter for alle)"

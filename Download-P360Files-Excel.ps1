@@ -202,7 +202,9 @@ if ($MaxFilesToProcess -le 0) {
     }
 }
 
-Write-Host "[+] Raekker der springes over i starten af Excel: $RowsToSkip" -ForegroundColor Green
+if ($RowsToSkip -gt 0) {
+    Write-Host "[+] Raekker der springes over i starten af Excel: $RowsToSkip" -ForegroundColor Green
+}
 if ($MaxFilesToProcess -gt 0) {
     Write-Host "[+] Maks filer der behandles i koerslen: $MaxFilesToProcess" -ForegroundColor Green
 } else {
@@ -295,12 +297,21 @@ if (-not $convertOnly) {
     Write-Host "[*] Laeser Excel fil..." -ForegroundColor Yellow
 
 try {
+    $maxDataRowsToRead = if ($MaxFilesToProcess -gt 0) { $MaxFilesToProcess } else { 0 }
+
     # Try using ImportExcel module first (if available)
     if (Get-Module -ListAvailable -Name ImportExcel) {
         Import-Module ImportExcel
         $startRow = 1 + $RowsToSkip
-        $data = Import-Excel -Path $ExcelFile -StartRow $startRow
-        Write-Host "[+] Bruger ImportExcel module (StartRow=$startRow)" -ForegroundColor Green
+
+        if ($maxDataRowsToRead -gt 0) {
+            $endRow = $startRow + $maxDataRowsToRead
+            $data = Import-Excel -Path $ExcelFile -StartRow $startRow -EndRow $endRow
+            Write-Host "[+] Bruger ImportExcel module (StartRow=$startRow, EndRow=$endRow)" -ForegroundColor Green
+        } else {
+            $data = Import-Excel -Path $ExcelFile -StartRow $startRow
+            Write-Host "[+] Bruger ImportExcel module (StartRow=$startRow)" -ForegroundColor Green
+        }
     } else {
         # Fallback to Excel COM object
         $excel = New-Object -ComObject Excel.Application
@@ -339,7 +350,24 @@ try {
         # Build data array
         $data = @()
         $firstDataRow = $headerRow + 1
-        for ($row = $firstDataRow; $row -le $rowCount; $row++) {
+        $availableDataRows = [Math]::Max(0, $rowCount - $headerRow)
+        $rowsToRead = if ($maxDataRowsToRead -gt 0) {
+            [Math]::Min($maxDataRowsToRead, $availableDataRows)
+        } else {
+            $availableDataRows
+        }
+
+        if ($rowsToRead -gt 100) {
+            Write-Host "[+] Behandler data i blokke af 100 rækker" -ForegroundColor DarkGray
+        }
+
+        $lastDataRow = if ($rowsToRead -gt 0) {
+            $firstDataRow + $rowsToRead - 1
+        } else {
+            $firstDataRow - 1
+        }
+
+        for ($row = $firstDataRow; $row -le $lastDataRow; $row++) {
             $rowData = @{}
             foreach ($header in $headers.Keys) {
                 $col = $headers[$header]
@@ -349,8 +377,11 @@ try {
             $data += [PSCustomObject]$rowData
             
             # Progress indicator
-            if ($row % 100 -eq 0) {
-                Write-Host "  Laeser raekke $row / $rowCount..." -ForegroundColor Gray
+            if ($rowsToRead -gt 100) {
+                $processedRows = ($row - $firstDataRow + 1)
+                if (($processedRows % 100 -eq 0) -or ($row -eq $lastDataRow)) {
+                    Write-Host "  Laeser raekke $processedRows / $rowsToRead..." -ForegroundColor Gray
+                }
             }
         }
         

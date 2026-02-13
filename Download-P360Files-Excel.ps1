@@ -423,12 +423,36 @@ $decisionTitlePattern = '^Afg.relse af'
 $decisionFileNamePattern = 'Afg.relse'
 
 foreach ($row in $data) {
+    $docNameCandidateKeys = @(
+        'DocName(D)(P)',
+        'DocName',
+        'DocumentTitle',
+        'Title'
+    )
+    $fileNameCandidateKeys = @(
+        'FileNameText(D)(P)',
+        'FileNameText',
+        'FileName',
+        'ToFile.Filename'
+    )
+
     # Extract fields
-    $docName = if ($row.DocName) { $row.DocName } else { "" }
+    $docName = ""
+    foreach ($key in $docNameCandidateKeys) {
+        if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
+            $docName = [string]$row.$key
+            break
+        }
+    }
+
     $fileRecno = if ($row.FileRecno) { $row.FileRecno } else { "" }
-    $fileName = if ($row.'FileName') { $row.'FileName' } 
-                elseif ($row.'ToFile.Filename') { $row.'ToFile.Filename' } 
-                else { "" }
+    $fileName = ""
+    foreach ($key in $fileNameCandidateKeys) {
+        if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
+            $fileName = [string]$row.$key
+            break
+        }
+    }
     $fileFormat = if ($row.'ToFile.Type') { $row.'ToFile.Type' }
                 elseif ($row.'ToFile.Format') { $row.'ToFile.Format' }
                 else { "" }

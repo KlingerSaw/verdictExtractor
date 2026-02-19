@@ -16,14 +16,30 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
-function Remove-MarkdownControlChars {
+function Normalize-MarkdownText {
     param([string]$Text)
 
     if ($null -eq $Text) {
         return ""
     }
 
-    return ($Text -replace "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", "")
+    $normalized = $Text
+
+    # Normalize hidden Unicode chars that often break markdown links and regex matches
+    $normalized = $normalized.Replace([char]0x00A0, ' ') # NBSP
+    $normalized = $normalized.Replace([char]0x200B, '')  # ZWSP
+    $normalized = $normalized.Replace([char]0x200C, '')  # ZWNJ
+    $normalized = $normalized.Replace([char]0x200D, '')  # ZWJ
+    $normalized = $normalized.Replace([char]0xFEFF, '')  # BOM/ZWNBSP
+
+    # Normalize line endings before cleanup
+    $normalized = $normalized -replace "`r`n", "`n"
+    $normalized = $normalized -replace "`r", "`n"
+
+    # Remove ASCII control characters while preserving tab and newline
+    $normalized = $normalized -replace "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", ""
+
+    return [string]::Normalize($normalized, [Text.NormalizationForm]::FormC)
 }
 
 function Build-MarkdownHeader {
@@ -136,7 +152,7 @@ function Convert-DownloadedFileToMarkdown {
     }
 
     $utf8 = New-Object System.Text.UTF8Encoding $true
-    [System.IO.File]::WriteAllText($markdownPath, (Remove-MarkdownControlChars -Text $markdown), $utf8)
+    [System.IO.File]::WriteAllText($markdownPath, (Normalize-MarkdownText -Text $markdown), $utf8)
     Write-Host "    [MD] Oprettet: $markdownPath" -ForegroundColor Green
 
     return $true

@@ -581,9 +581,22 @@ $decisionTitlePattern = '^Afg.relse af'
 $decisionFileTitlePattern = '(?i)afg.relse'
 
 foreach ($doc in $allDocuments) {
+    $docTitleCandidateKeys = @(
+        'Title',
+        'DocName',
+        'DocumentTitle',
+        'Name'
+    )
+
     $docRecno = $doc.Recno
     $docNumber = $doc.DocumentNumber
-    $docTitle = $doc.Title
+    $docTitle = ""
+    foreach ($key in $docTitleCandidateKeys) {
+        if ($doc.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$doc.$key)) {
+            $docTitle = [string]$doc.$key
+            break
+        }
+    }
     $caseNumber = $doc.CaseNumber
     $caseRecno = $doc.CaseRecno
     $caseTitle = if ($doc.CaseNameAndDescription) { $doc.CaseNameAndDescription } else { "" }
@@ -637,9 +650,24 @@ foreach ($doc in $allDocuments) {
     # Process each file in document
     if ($doc.Files -and $doc.Files.Count -gt 0) {
         foreach ($file in $doc.Files) {
+            $fileTitleCandidateKeys = @(
+                'Title',
+                'DocName',
+                'FileNameText',
+                'Filename',
+                'Name'
+            )
+
             $fileRecno = $file.Recno
-            $fileTitle = $file.Title
-            $fileFormat = $file.Format.ToUpper()
+            $fileTitle = ""
+            foreach ($key in $fileTitleCandidateKeys) {
+                if ($file.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$file.$key)) {
+                    $fileTitle = [string]$file.$key
+                    break
+                }
+            }
+
+            $fileFormat = if ($file.Format) { ([string]$file.Format).ToUpperInvariant() } else { "" }
             $fileUrl = $file.URL
 
             # Validate extension

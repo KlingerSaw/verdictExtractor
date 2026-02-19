@@ -27,10 +27,10 @@ function Normalize-MarkdownText {
 
     # Normalize hidden Unicode chars that often break markdown links and regex matches
     $normalized = $normalized.Replace([char]0x00A0, ' ') # NBSP
-    $normalized = $normalized.Replace([char]0x200B, '')  # ZWSP
-    $normalized = $normalized.Replace([char]0x200C, '')  # ZWNJ
-    $normalized = $normalized.Replace([char]0x200D, '')  # ZWJ
-    $normalized = $normalized.Replace([char]0xFEFF, '')  # BOM/ZWNBSP
+    $normalized = $normalized.Replace([string][char]0x200B, '')  # ZWSP
+    $normalized = $normalized.Replace([string][char]0x200C, '')  # ZWNJ
+    $normalized = $normalized.Replace([string][char]0x200D, '')  # ZWJ
+    $normalized = $normalized.Replace([string][char]0xFEFF, '')  # BOM/ZWNBSP
 
     # Normalize line endings before cleanup
     $normalized = $normalized -replace "`r`n", "`n"

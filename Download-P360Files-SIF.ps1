@@ -170,27 +170,20 @@ function Build-MarkdownHeader {
     )
 
     $documentUrl = $FileInfo.DocumentLink
-    if ($FileInfo.SourceUrl) {
-        $documentUrl = $FileInfo.SourceUrl
+
+    $displayTitle = if ($FileInfo.Filename) {
+        [System.IO.Path]::GetFileNameWithoutExtension([string]$FileInfo.Filename)
+    } elseif ($FileInfo.DocumentTitle) {
+        [string]$FileInfo.DocumentTitle
+    } else {
+        ""
     }
 
     $markdown = ""
-    $markdown += "# $($FileInfo.DocumentTitle)`n`n"
-    $markdown += "**Dokument:** $($FileInfo.DocumentNumber)`n"
-    $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
-    $markdown += "**Format:** $FormatLabel`n"
-
+    $markdown += "$displayTitle`n"
     if ($documentUrl) {
-        $markdown += "**P360 Links:**`n"
-        if ($documentUrl) {
-            $markdown += "- [Hent fil]($documentUrl)`n"
-        }
-        if ($FileInfo.DocumentLink) {
-            $markdown += "- [Dokumentkort]($($FileInfo.DocumentLink))`n"
-        }
-        $markdown += "`n"
+        $markdown += "[Dokumentkort]($documentUrl)`n"
     }
-
     $markdown += "`n"
     return $markdown
 }
@@ -977,10 +970,7 @@ foreach ($file in $downloadedFiles) {
 - **Dokument nummer:** $($file.DocumentNumber)
 - **Sags nummer:** $($file.CaseNumber)
 - **Fil:** ``$($file.Filename)`` ($($file.Format))
-- **Kilde URL (SIF):** $(if ($file.SourceUrl) { "[$($file.SourceUrl)]($($file.SourceUrl))" } else { "-" })
-- **P360 Links:**
-  - [Hent fil]($(if ($file.SourceUrl) { $file.SourceUrl } else { $file.DocumentLink }))
-  - [Dokumentkort]($($file.DocumentLink))
+- **P360 Link:** [Dokumentkort]($($file.DocumentLink))
 - **Lokal fil:** [``$($file.Filename)``](../prod_downloads/$($file.Filename))
 - **Markdown:** [``$markdownFile``](./$markdownFile)
 

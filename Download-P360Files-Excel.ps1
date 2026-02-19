@@ -42,42 +42,49 @@ function Normalize-MarkdownText {
     return $normalized.Normalize([Text.NormalizationForm]::FormC)
 }
 
+function Get-RecnoFromFilename {
+    param([hashtable]$FileInfo)
+
+    $sourceName = ""
+    if ($FileInfo.Filename) {
+        $sourceName = [System.IO.Path]::GetFileNameWithoutExtension([string]$FileInfo.Filename)
+    } elseif ($FileInfo.Path) {
+        $sourceName = [System.IO.Path]::GetFileNameWithoutExtension([System.IO.Path]::GetFileName([string]$FileInfo.Path))
+    }
+
+    if ($sourceName -match '^(\d+)') {
+        return $Matches[1]
+    }
+
+    return ""
+}
+
 function Build-MarkdownHeader {
     param(
         [hashtable]$FileInfo,
         [string]$FormatLabel
     )
 
-    $downloadUrl = $null
+    $recno = Get-RecnoFromFilename -FileInfo $FileInfo
     $documentUrl = $null
-    if ($FileInfo.FileId) {
-        $downloadUrl = "https://esdh-nh-arkiv/GetFile.aspx?fileId=$($FileInfo.FileId)&redirect=true"
+    if ($recno) {
+        $documentUrl = "https://esdh-nh-arkiv/locator/Earchive/Case/Details/locator.aspx?name=Earchive.Document.Details.EArchive&module=Document&subtype=17&recno=$recno"
     }
-    if ($FileInfo.DocumentRecno) {
-        $documentUrl = "https://esdh-nh-arkiv/locator/Earchive/Case/Details/locator.aspx?name=Earchive.Document.Details.EArchive&module=Document&subtype=17&recno=$($FileInfo.DocumentRecno)"
+
+    $displayTitle = if ($FileInfo.Filename) {
+        [System.IO.Path]::GetFileNameWithoutExtension([string]$FileInfo.Filename)
+    } elseif ($FileInfo.Title) {
+        [string]$FileInfo.Title
+    } else {
+        ""
     }
 
     $markdown = ""
-    $markdown += "# $($FileInfo.Title)`n`n"
-    $markdown += "**Dokument:** $($FileInfo.DocumentNumber)`n"
-    $markdown += "**Sag:** $($FileInfo.CaseNumber)`n"
-    $markdown += "**Format:** $FormatLabel`n"
-    $markdown += "**FileID:** $($FileInfo.FileId)`n"
-
-    if ($downloadUrl -or $documentUrl) {
-        $markdown += "**P360 Links:**`n"
-        if ($downloadUrl) {
-            $markdown += "- [Hent fil]($downloadUrl)`n"
-        }
-        if ($documentUrl) {
-            $markdown += "- [Dokumentkort]($documentUrl)`n"
-        }
-        $markdown += "`n"
-    } else {
-        $markdown += "`n"
+    $markdown += "$displayTitle`n"
+    if ($documentUrl) {
+        $markdown += "- [Dokumentkort]($documentUrl)`n"
     }
-
-    $markdown += "---`n`n"
+    $markdown += "`n---`n`n"
     return $markdown
 }
 

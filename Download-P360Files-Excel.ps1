@@ -457,6 +457,8 @@ foreach ($row in $data) {
         'Title'
     )
     $fileNameCandidateKeys = @(
+        'FileNameOrComment(D)(P)',
+        'FileNameOrComment',
         'FileNameText(D)(P)',
         'FileNameText',
         'FileName',
@@ -477,6 +479,13 @@ foreach ($row in $data) {
     foreach ($key in $fileNameCandidateKeys) {
         if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
             $fileName = [string]$row.$key
+            break
+        }
+    }
+    $fileNameOrComment = ""
+    foreach ($key in @('FileNameOrComment(D)(P)', 'FileNameOrComment')) {
+        if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
+            $fileNameOrComment = [string]$row.$key
             break
         }
     }
@@ -573,9 +582,12 @@ foreach ($row in $data) {
             $caseNumber = $Matches[1]
         }
         
-        # Build filename: "FileID XX_YYYYY Afgørelse.ext"
+        # Build filename: "FileID XX_YYYYY <FileNameOrComment>.ext"
         $safeCaseNumber = if ($caseNumber) { $caseNumber -replace '/', '_' } else { "UkendtSagsnummer" }
-        $newFilename = "$fileId $safeCaseNumber Afgørelse.$($extension.ToLower())"
+        $namePartRaw = if ([string]::IsNullOrWhiteSpace($fileNameOrComment)) { "Afgørelse" } else { $fileNameOrComment }
+        $safeNamePart = ($namePartRaw -replace '[\\/:*?"<>|]', '_').Trim()
+        if ([string]::IsNullOrWhiteSpace($safeNamePart)) { $safeNamePart = "Afgørelse" }
+        $newFilename = "$fileId $safeCaseNumber $safeNamePart.$($extension.ToLower())"
         
         Write-Host "v OK: '$docName' | Ext='$extension' | FileId='$fileId'" -ForegroundColor Green
         

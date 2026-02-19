@@ -275,12 +275,14 @@ if (-not $ExcelFile) {
 
 Write-Host ""
 
-# Prompt for credentials
-if (-not $Username) { $Username = Read-Host "P360 Brugernavn (fx DOMAIN\brugernavn)" }
-if (-not $Password) {
-    $SecurePassword = Read-Host "P360 Password" -AsSecureString
-    $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
-    $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+# Prompt for credentials (download mode only)
+if (-not $convertOnly) {
+    if (-not $Username) { $Username = Read-Host "P360 Brugernavn (fx DOMAIN\brugernavn)" }
+    if (-not $Password) {
+        $SecurePassword = Read-Host "P360 Password" -AsSecureString
+        $BSTR = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($SecurePassword)
+        $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)
+    }
 }
 
 # Prompt for filetype if not specified
@@ -299,7 +301,9 @@ if (-not $FileType -or $FileType -eq 'both') {
 Write-Host ""
 Write-Host "[+] Excel fil: $ExcelFile" -ForegroundColor Green
 Write-Host "[+] Filtype: $FileType" -ForegroundColor Green
-Write-Host "[+] Brugernavn: $Username" -ForegroundColor Green
+if (-not $convertOnly) {
+    Write-Host "[+] Brugernavn: $Username" -ForegroundColor Green
+}
 Write-Host "[+] Output mappe: $OutputDir" -ForegroundColor Green
 Write-Host ""
 

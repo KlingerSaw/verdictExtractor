@@ -82,9 +82,9 @@ function Build-MarkdownHeader {
     $markdown = ""
     $markdown += "$displayTitle`n"
     if ($documentUrl) {
-        $markdown += "- [Dokumentkort]($documentUrl)`n"
+        $markdown += "[Dokumentkort]($documentUrl)`n"
     }
-    $markdown += "`n---`n`n"
+    $markdown += "`n"
     return $markdown
 }
 

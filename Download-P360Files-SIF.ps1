@@ -67,7 +67,7 @@ function Normalize-MarkdownText {
     # Remove ASCII control characters while preserving tab and newline
     $normalized = $normalized -replace "[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]", ""
 
-    return [string]::Normalize($normalized, [Text.NormalizationForm]::FormC)
+    return $normalized.Normalize([Text.NormalizationForm]::FormC)
 }
 
 function Get-ExtensionFromFormat {

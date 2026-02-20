@@ -453,6 +453,8 @@ foreach ($row in $data) {
     $docNameCandidateKeys = @(
         'DocName(D)(P)',
         'DocName',
+        'PublicTitle(D)(P)',
+        'PublicTitle',
         'DocumentTitle',
         'Title'
     )
@@ -582,12 +584,16 @@ foreach ($row in $data) {
             $caseNumber = $Matches[1]
         }
         
-        # Build filename: "FileID XX_YYYYY <FileNameOrComment>.ext"
+        # Build filename: "<FileRecno> - <Sagsnummer> - <PublicTitle(D)(P)>.ext"
         $safeCaseNumber = if ($caseNumber) { $caseNumber -replace '/', '_' } else { "UkendtSagsnummer" }
-        $namePartRaw = if ([string]::IsNullOrWhiteSpace($fileNameOrComment)) { "Afgørelse" } else { $fileNameOrComment }
-        $safeNamePart = ($namePartRaw -replace '[\\/:*?"<>|]', '_').Trim()
-        if ([string]::IsNullOrWhiteSpace($safeNamePart)) { $safeNamePart = "Afgørelse" }
-        $newFilename = "$fileId $safeCaseNumber $safeNamePart.$($extension.ToLower())"
+        $titlePartRaw = if ([string]::IsNullOrWhiteSpace($docName)) {
+            if ([string]::IsNullOrWhiteSpace($fileNameOrComment)) { "Afgørelse" } else { $fileNameOrComment }
+        } else {
+            $docName
+        }
+        $safeTitlePart = ($titlePartRaw -replace '[\\/:*?"<>|]', '_').Trim()
+        if ([string]::IsNullOrWhiteSpace($safeTitlePart)) { $safeTitlePart = "Afgørelse" }
+        $newFilename = "$fileId - $safeCaseNumber - $safeTitlePart.$($extension.ToLower())"
         
         Write-Host "v OK: '$docName' | Ext='$extension' | FileId='$fileId'" -ForegroundColor Green
         
@@ -746,9 +752,11 @@ Write-Host ""
             $basename = [System.IO.Path]::GetFileNameWithoutExtension($file.Name)
             $extension = $file.Extension.TrimStart('.').ToUpper()
             
-            # Try to extract case number from filename (e.g., "20_01453 Afgørelse")
+            # Try to extract case number from filename (supports both old and new naming formats)
             $caseNumber = ""
-            if ($basename -match '^(\d{2}[_/]\d{5})') {
+            if ($basename -match '^\d+\s*-\s*(\d{2}[_/]\d{5})\s*-') {
+                $caseNumber = $Matches[1] -replace '_', '/'
+            } elseif ($basename -match '^(\d{2}[_/]\d{5})') {
                 $caseNumber = $Matches[1] -replace '_', '/'
             }
             

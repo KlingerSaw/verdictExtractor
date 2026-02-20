@@ -124,14 +124,17 @@ function Get-CaseBasedFilename {
     param(
         [string]$FileId,
         [string]$CaseNumber,
+        [string]$Title,
         [string]$Format,
         [string]$FallbackTitle,
         [string]$SourceUrl
     )
 
-    $displayCaseNumber = ""
-    if (-not [string]::IsNullOrWhiteSpace($CaseNumber)) {
-        $displayCaseNumber = ($CaseNumber.Trim() -replace '\\', '/' -replace '_', '/')
+    $displayCaseNumber = if ([string]::IsNullOrWhiteSpace($CaseNumber)) { "UkendtSagsnummer" } else { $CaseNumber.Trim() }
+
+    $displayTitle = if ([string]::IsNullOrWhiteSpace($Title)) { "" } else { $Title.Trim() }
+    if ([string]::IsNullOrWhiteSpace($displayTitle)) {
+        $displayTitle = if ([string]::IsNullOrWhiteSpace($FallbackTitle)) { "UkendtTitel" } else { $FallbackTitle.Trim() }
     }
 
     $extension = Get-ExtensionFromFormat -Format $Format
@@ -141,25 +144,13 @@ function Get-CaseBasedFilename {
     }
 
     $resolvedFileId = if ([string]::IsNullOrWhiteSpace($FileId)) { "UkendtFilId" } else { $FileId.Trim() }
-
-    if (-not [string]::IsNullOrWhiteSpace($displayCaseNumber)) {
-        $displayName = "$resolvedFileId $displayCaseNumber Afgørelse"
-        $safeName = ($displayName -replace '/', '_') + $extension
-
-        return @{
-            SafeFilename = $safeName
-            DisplayName = $displayName
-            DisplayCaseNumber = $displayCaseNumber
-        }
-    }
-
-    $safeName = "$resolvedFileId UkendtSagsnummer Afgørelse$extension"
-    $displayName = "$resolvedFileId UkendtSagsnummer Afgørelse"
+    $displayName = "$resolvedFileId - $displayCaseNumber - $displayTitle"
+    $safeName = (($displayName -replace '[\\/:*?"<>|]', '_').Trim()) + $extension
 
     return @{
         SafeFilename = $safeName
         DisplayName = $displayName
-        DisplayCaseNumber = ""
+        DisplayCaseNumber = $displayCaseNumber
     }
 }
 
@@ -772,7 +763,7 @@ foreach ($file in $filesToDownload) {
     $total = $filesToDownload.Count
 
     # Resolve case-based filename before save
-    $caseFilename = Get-CaseBasedFilename -FileId $file.FileRecno -CaseNumber $file.CaseNumber -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
+    $caseFilename = Get-CaseBasedFilename -FileId $file.FileRecno -CaseNumber $file.CaseNumber -Title $file.DocumentTitle -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
     $safeFilename = $caseFilename.SafeFilename
     $displayTargetName = $caseFilename.DisplayName
     $displayCaseNumber = $caseFilename.DisplayCaseNumber

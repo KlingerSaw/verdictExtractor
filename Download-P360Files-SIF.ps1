@@ -968,7 +968,7 @@ foreach ($file in $downloadedFiles) {
 "@
 }
 
-$indexPath = Join-Path $MarkdownDir "INDEX.md"
+$indexPath = Join-Path $MarkdownDir "INDEXPROD.md"
 $utf8 = New-Object System.Text.UTF8Encoding $true
 [System.IO.File]::WriteAllText($indexPath, (Normalize-MarkdownText -Text $indexContent), $utf8)
 

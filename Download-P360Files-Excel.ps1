@@ -851,7 +851,7 @@ if ($downloadedFiles.Count -gt 0) {
         Write-Host ""
     }
 
-    # Create INDEX.md
+    # Create INDEXARKIV.md
     Write-Host "[*] Opretter markdown index..." -ForegroundColor Yellow
     
     $indexContent = @"
@@ -885,7 +885,7 @@ if ($downloadedFiles.Count -gt 0) {
 "@
     }
     
-    $indexPath = Join-Path $MarkdownDir "INDEX.md"
+    $indexPath = Join-Path $MarkdownDir "INDEXARKIV.md"
     $utf8 = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($indexPath, $indexContent, $utf8)
     

@@ -16,6 +16,33 @@ param(
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 
+# Log all console output to a file in a dedicated logs folder
+$logFileName = "p360_excel_download_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss')
+$logDirectory = Join-Path (Get-Location) "logs"
+
+if (-not (Test-Path -Path $logDirectory -PathType Container)) {
+    New-Item -Path $logDirectory -ItemType Directory -Force | Out-Null
+}
+
+$logFilePath = Join-Path $logDirectory $logFileName
+$transcriptStarted = $false
+
+try {
+    Start-Transcript -Path $logFilePath -Force | Out-Null
+    $transcriptStarted = $true
+    Write-Host "[+] Logger til fil: $logFilePath" -ForegroundColor Green
+} catch {
+    Write-Host "[!] Kunne ikke starte logfil: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+
+function Stop-LogTranscript {
+    if ($transcriptStarted) {
+        try {
+            Stop-Transcript | Out-Null
+        } catch {}
+    }
+}
+
 function Normalize-MarkdownText {
     param([string]$Text)
 
@@ -252,7 +279,7 @@ if (-not $ExcelFile) {
 
     if ($excelFiles.Count -eq 0) {
         Write-Host "FEJL: Ingen Excel fil (.xlsx eller .xls) fundet!" -ForegroundColor Red
-        pause; exit 1
+        pause; Stop-LogTranscript; exit 1
     } elseif ($excelFiles.Count -eq 1) {
         $ExcelFile = $excelFiles[0].FullName
         Write-Host "[+] Fundet Excel fil: $($excelFiles[0].Name)" -ForegroundColor Green
@@ -268,6 +295,7 @@ if (-not $ExcelFile) {
             Write-Host "[+] Valgt: $($excelFiles[$selectedIndex].Name)" -ForegroundColor Green
         } else {
             Write-Host "Ugyldig valg!" -ForegroundColor Red
+            Stop-LogTranscript
             exit 1
         }
     }
@@ -430,6 +458,7 @@ try {
     Write-Host "FEJL: Kunne ikke laese Excel fil" -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
     pause
+    Stop-LogTranscript
     exit 1
 }
 } # End if not convertOnly
@@ -625,12 +654,13 @@ Write-Host ""
 
 if ($filesToDownload.Count -eq 0) {
     Write-Host "INGEN filer at hente!" -ForegroundColor Red
-    pause; exit 0
+    pause; Stop-LogTranscript; exit 0
 }
 
 $confirm = Read-Host "Start download? (Y/N)"
 if ($confirm -ne 'Y' -and $confirm -ne 'y') {
     Write-Host "Afbrudt" -ForegroundColor Yellow
+    Stop-LogTranscript
     exit 0
 }
 } # End if not convertOnly
@@ -777,6 +807,7 @@ Write-Host ""
         Write-Host "[!] Download mappe findes ikke: $OutputDir" -ForegroundColor Red
         Write-Host "[!] Opret mappen og placer filer der, eller koer download mode" -ForegroundColor Yellow
         pause
+        Stop-LogTranscript
         exit 1
     }
     
@@ -873,3 +904,5 @@ $openFolder = Read-Host "Aaben download mappe? (Y/N)"
 if ($openFolder -eq 'Y' -or $openFolder -eq 'y') {
     Invoke-Item $OutputDir
 }
+
+Stop-LogTranscript

@@ -98,19 +98,15 @@ function Build-MarkdownHeader {
         $documentUrl = "https://esdh-nh-arkiv/locator/Earchive/Case/Details/locator.aspx?name=Earchive.Document.Details.EArchive&module=Document&subtype=17&recno=$recno"
     }
 
-    $displayTitle = if ($FileInfo.Filename) {
-        [System.IO.Path]::GetFileNameWithoutExtension([string]$FileInfo.Filename)
-    } elseif ($FileInfo.Title) {
-        [string]$FileInfo.Title
-    } else {
-        ""
-    }
+    $caseNumber = if ($FileInfo.CaseNumber) { [string]$FileInfo.CaseNumber } else { "" }
+    $decisionDate = if ($FileInfo.DecisionDate) { [string]$FileInfo.DecisionDate } else { "" }
+    $docId = if ($FileInfo.DocumentRecno) { [string]$FileInfo.DocumentRecno } elseif ($recno) { [string]$recno } else { "" }
 
     $markdown = ""
-    $markdown += "$displayTitle`n"
-    if ($documentUrl) {
-        $markdown += "[Dokumentkort]($documentUrl)`n"
-    }
+    $markdown += "Sagsnummer: $caseNumber`n"
+    $markdown += "Afgørelsesdato: $decisionDate`n"
+    $markdown += "Dokumentkort: $documentUrl`n"
+    $markdown += "DokID: $docId`n"
     $markdown += "`n"
     return $markdown
 }
@@ -533,6 +529,13 @@ foreach ($row in $data) {
     }
     $klassifikation = if ($row.'ToClassification.Code') { $row.'ToClassification.Code' } else { "" }
     $caseTitle = if ($row.CaseNameAndDescription) { $row.CaseNameAndDescription } else { "" }
+    $decisionDate = ""
+    foreach ($key in @('DocumentDate', 'DocumentDate(D)(P)', 'CreatedDate', 'CreatedDate(D)(P)', 'JournalDate', 'JournalDate(D)(P)', 'Date')) {
+        if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
+            $decisionDate = [string]$row.$key
+            break
+        }
+    }
     
     # Document-level validation
     $skip = $false
@@ -635,6 +638,7 @@ foreach ($row in $data) {
             CaseTitle = $caseTitle
             CaseNumber = $caseNumber
             DocumentRecno = $documentRecno
+            DecisionDate = $decisionDate
         }
     }
 }
@@ -799,6 +803,7 @@ Write-Host ""
                 CaseNumber = $caseNumber
                 DocumentRecno = ""
                 Filename = $file.Name
+                DecisionDate = ""
             }
         }
         

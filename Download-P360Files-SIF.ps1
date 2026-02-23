@@ -204,18 +204,25 @@ function Get-DecisionDateFromText {
         'december' = 12
     }
 
-    $candidate = [string]$Text
+    $candidate = ([string]$Text -replace '[   ]', ' ' -replace '\s+', ' ').Trim()
+    $patterns = @(
+        '(?i)Afg\S*?\s+af\s+den\s+(\d{1,2})\s*[\.-]?\s*([\p{L}]+)\.?\s+(\d{4})',
+        '(?i)Afg\S*?\s+af\s+(\d{1,2})\s*[\.-]?\s*([\p{L}]+)\.?\s+(\d{4})',
+        '(?i)(?<!\d)(\d{1,2})\s*[\._\-/ ]+\s*([\p{L}]+)\.?\s+(\d{4})(?!\d)'
+    )
 
-    if ($candidate -match '(?i)Afg.relse\s+af\s+(\d{1,2})\.\s*([A-Za-zÆØÅæøå]+)\s+(\d{4})') {
-        $day = [int]$Matches[1]
-        $monthName = $Matches[2].ToLowerInvariant()
-        $year = [int]$Matches[3]
+    foreach ($pattern in $patterns) {
+        if ($candidate -match $pattern) {
+            $day = [int]$Matches[1]
+            $monthName = $Matches[2].ToLowerInvariant().TrimEnd('.')
+            $year = [int]$Matches[3]
 
-        if ($monthMap.ContainsKey($monthName)) {
-            try {
-                return [datetime]::new($year, [int]$monthMap[$monthName], $day)
-            } catch {
-                return $null
+            if ($monthMap.ContainsKey($monthName)) {
+                try {
+                    return [datetime]::new($year, [int]$monthMap[$monthName], $day)
+                } catch {
+                    return $null
+                }
             }
         }
     }

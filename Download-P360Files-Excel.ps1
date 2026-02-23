@@ -148,9 +148,11 @@ function Format-DecisionDate {
     )
 
     foreach ($culture in $cultures) {
-        $parsedDate = $null
-        if ([datetime]::TryParseExact($trimmedDate, $knownDateFormats, $culture, $dateStyles, [ref]$parsedDate)) {
-            return $parsedDate.ToString('yyyy-MM-dd')
+        foreach ($knownDateFormat in $knownDateFormats) {
+            $parsedDate = $null
+            if ([datetime]::TryParseExact($trimmedDate, $knownDateFormat, $culture, $dateStyles, [ref]$parsedDate)) {
+                return $parsedDate.ToString('yyyy-MM-dd')
+            }
         }
     }
 

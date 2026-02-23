@@ -177,6 +177,50 @@ function Get-DecisionDateFromText {
     return ""
 }
 
+function Get-DecisionDateFromFilename {
+    param(
+        [string]$Filename
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Filename)) {
+        return ""
+    }
+
+    $nameOnly = [System.IO.Path]::GetFileNameWithoutExtension($Filename)
+    if ([string]::IsNullOrWhiteSpace($nameOnly)) {
+        return ""
+    }
+
+    $monthMap = @{
+        'januar' = '01'
+        'februar' = '02'
+        'marts' = '03'
+        'april' = '04'
+        'maj' = '05'
+        'juni' = '06'
+        'juli' = '07'
+        'august' = '08'
+        'september' = '09'
+        'oktober' = '10'
+        'november' = '11'
+        'december' = '12'
+    }
+
+    # Eksempel: "4 december 2019" -> "2019-12-04"
+    if ($nameOnly -match '(?i)(?<!\d)(\d{1,2})[\.\s_-]+([[:alpha:]æøåÆØÅ]+)[\.\s_-]+(\d{4})(?!\d)') {
+        $day = [int]$Matches[1]
+        $monthName = $Matches[2].ToLowerInvariant()
+        $year = $Matches[3]
+
+        if ($monthMap.ContainsKey($monthName)) {
+            $month = $monthMap[$monthName]
+            return "{0}-{1}-{2:00}" -f $year, $month, $day
+        }
+    }
+
+    return ""
+}
+
 function Convert-DownloadedFileToMarkdown {
     param(
         [hashtable]$FileInfo,
@@ -191,6 +235,13 @@ function Convert-DownloadedFileToMarkdown {
     if (Test-Path $markdownPath) {
         Write-Host "    [MD] Findes allerede: $markdownPath" -ForegroundColor Yellow
         return $true
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate)) {
+        $decisionDateFromOriginalFilename = Get-DecisionDateFromFilename -Filename ([string]$FileInfo.OriginalFilename)
+        if (-not [string]::IsNullOrWhiteSpace($decisionDateFromOriginalFilename)) {
+            $FileInfo.DecisionDate = $decisionDateFromOriginalFilename
+        }
     }
 
     if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate)) {
@@ -612,8 +663,15 @@ foreach ($row in $data) {
     }
     $klassifikation = if ($row.'ToClassification.Code') { $row.'ToClassification.Code' } else { "" }
     $caseTitle = if ($row.CaseNameAndDescription) { $row.CaseNameAndDescription } else { "" }
-    # Prefer date parsed from title or filename text (e.g. "Afgørelse af 27. juni 2022")
-    $decisionDate = Get-DecisionDateFromText -Text $docName
+    # Prefer date parsed from original filename from Excel export
+    $decisionDate = Get-DecisionDateFromFilename -Filename $fileName
+    if ([string]::IsNullOrWhiteSpace($decisionDate)) {
+        $decisionDate = Get-DecisionDateFromFilename -Filename $fileNameOrComment
+    }
+    # Fallback: parse from title/filename text (e.g. "Afgørelse af 27. juni 2022")
+    if ([string]::IsNullOrWhiteSpace($decisionDate)) {
+        $decisionDate = Get-DecisionDateFromText -Text $docName
+    }
     if ([string]::IsNullOrWhiteSpace($decisionDate)) {
         $decisionDate = Get-DecisionDateFromText -Text $fileName
     }
@@ -724,6 +782,7 @@ foreach ($row in $data) {
         $filesToDownload += @{
             FileId = $fileId
             Filename = $newFilename
+            OriginalFilename = $fileName
             DocumentTitle = $docName
             Extension = $extension
             DocumentNumber = $importedDocNo
@@ -810,6 +869,8 @@ foreach ($file in $filesToDownload) {
             CaseNumber = $file.CaseNumber
             DocumentRecno = $file.DocumentRecno
             Filename = $safeFilename
+            OriginalFilename = $file.OriginalFilename
+            DecisionDate = $file.DecisionDate
         }
 
         Write-Host "    [*] Konverterer straks til markdown..." -ForegroundColor DarkGray
@@ -836,6 +897,8 @@ foreach ($file in $filesToDownload) {
             CaseNumber = $file.CaseNumber
             DocumentRecno = $file.DocumentRecno
             Filename = $safeFilename
+            OriginalFilename = $file.OriginalFilename
+            DecisionDate = $file.DecisionDate
         }
 
         Write-Host "    [*] Konverterer straks til markdown..." -ForegroundColor DarkGray

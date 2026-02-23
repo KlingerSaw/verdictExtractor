@@ -193,11 +193,20 @@ function Convert-DownloadedFileToMarkdown {
         return $true
     }
 
-    $markdown = ""
+    if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate)) {
+        $titleCandidates = @([string]$FileInfo.Title, [string]$FileInfo.Filename, [string]$baseName)
+        foreach ($candidate in $titleCandidates) {
+            $decisionDateFromName = Get-DecisionDateFromText -Text $candidate
+            if (-not [string]::IsNullOrWhiteSpace($decisionDateFromName)) {
+                $FileInfo.DecisionDate = $decisionDateFromName
+                break
+            }
+        }
+    }
+
+    $markdownBody = ""
 
     if ($FileInfo.Extension -eq 'PDF') {
-        $markdown = Build-MarkdownHeader -FileInfo $FileInfo -FormatLabel 'PDF'
-
         if ($PdfToTextPath) {
             $tempTxt = [System.IO.Path]::GetTempFileName()
             $absolutePath = (Resolve-Path $inputPath).Path
@@ -206,21 +215,19 @@ function Convert-DownloadedFileToMarkdown {
             if (Test-Path $tempTxt) {
                 $text = Get-Content $tempTxt -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
                 if ($text -and $text.Trim().Length -gt 50) {
-                    $markdown += $text
+                    $markdownBody += $text
                 } else {
-                    $markdown += "*[PDF indeholder ingen udtrækbar tekst - muligvis scannet dokument]*"
+                    $markdownBody += "*[PDF indeholder ingen udtrækbar tekst - muligvis scannet dokument]*"
                 }
                 Remove-Item $tempTxt -Force -ErrorAction SilentlyContinue
             } else {
-                $markdown += "*[Kunne ikke udtrække tekst fra PDF]*"
+                $markdownBody += "*[Kunne ikke udtrække tekst fra PDF]*"
             }
         } else {
-            $markdown += "*[pdftotext ikke tilgængelig - installer for tekstudtræk]*"
+            $markdownBody += "*[pdftotext ikke tilgængelig - installer for tekstudtræk]*"
         }
 
     } elseif ($FileInfo.Extension -eq 'DOCX' -or $FileInfo.Extension -eq 'DOC') {
-        $markdown = Build-MarkdownHeader -FileInfo $FileInfo -FormatLabel $FileInfo.Extension
-
         try {
             $word = New-Object -ComObject Word.Application
             $word.Visible = $false
@@ -237,15 +244,25 @@ function Convert-DownloadedFileToMarkdown {
             [System.GC]::WaitForPendingFinalizers()
 
             if ($text -and $text.Trim().Length -gt 50) {
-                $markdown += $text
+                $markdownBody += $text
             } else {
-                $markdown += "*[Tomt dokument eller kunne ikke udtrække tekst]*"
+                $markdownBody += "*[Tomt dokument eller kunne ikke udtrække tekst]*"
             }
         } catch {
-            $markdown += "*[Kunne ikke aabne Word dokument - Microsoft Word skal vaere installeret]*`n"
-            $markdown += "*Fejl: $($_.Exception.Message)*"
+            $markdownBody += "*[Kunne ikke aabne Word dokument - Microsoft Word skal vaere installeret]*`n"
+            $markdownBody += "*Fejl: $($_.Exception.Message)*"
         }
     }
+
+    if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate) -and -not [string]::IsNullOrWhiteSpace($markdownBody)) {
+        $decisionDateFromBody = Get-DecisionDateFromText -Text $markdownBody
+        if (-not [string]::IsNullOrWhiteSpace($decisionDateFromBody)) {
+            $FileInfo.DecisionDate = $decisionDateFromBody
+        }
+    }
+
+    $markdown = Build-MarkdownHeader -FileInfo $FileInfo -FormatLabel $FileInfo.Extension
+    $markdown += $markdownBody
 
     $utf8 = New-Object System.Text.UTF8Encoding $true
     [System.IO.File]::WriteAllText($markdownPath, (Normalize-MarkdownText -Text $markdown), $utf8)

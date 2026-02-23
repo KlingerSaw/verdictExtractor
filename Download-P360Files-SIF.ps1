@@ -162,8 +162,14 @@ function Build-MarkdownHeader {
 
     $documentUrl = if ($FileInfo.DocumentLink) { [string]$FileInfo.DocumentLink } else { "" }
     $caseNumber = if ($FileInfo.CaseNumber) { [string]$FileInfo.CaseNumber } else { "" }
-    $decisionDate = Format-DecisionDate -DateValue $FileInfo.DecisionDate
+    $resolvedDecisionDate = Resolve-DecisionDate -FileInfo $FileInfo
+    $decisionDate = $resolvedDecisionDate.Value
     $docId = if ($FileInfo.DocumentRecno) { [string]$FileInfo.DocumentRecno } else { "" }
+
+    $logDocId = if ([string]::IsNullOrWhiteSpace($docId)) { "ukendt" } else { $docId }
+    $logFile = if ($FileInfo.Filename) { [string]$FileInfo.Filename } else { "ukendt" }
+    $logSource = if ($resolvedDecisionDate.Source) { [string]$resolvedDecisionDate.Source } else { "ukendt" }
+    Write-Host "    [MD] Afgørelsesdato sat til '$decisionDate' (kilde: $logSource, DokID: $logDocId, Fil: $logFile)" -ForegroundColor DarkGray
 
     $markdown = ""
     $markdown += "Sagsnummer: $caseNumber`n"
@@ -172,6 +178,83 @@ function Build-MarkdownHeader {
     $markdown += "DokID: $docId`n"
     $markdown += "`n"
     return $markdown
+}
+
+function Get-DecisionDateFromText {
+    param(
+        [string]$Text
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Text)) {
+        return $null
+    }
+
+    $monthMap = @{
+        'januar' = 1
+        'februar' = 2
+        'marts' = 3
+        'april' = 4
+        'maj' = 5
+        'juni' = 6
+        'juli' = 7
+        'august' = 8
+        'september' = 9
+        'oktober' = 10
+        'november' = 11
+        'december' = 12
+    }
+
+    $candidate = [string]$Text
+
+    if ($candidate -match '(?i)Afg.relse\s+af\s+(\d{1,2})\.\s*([A-Za-zÆØÅæøå]+)\s+(\d{4})') {
+        $day = [int]$Matches[1]
+        $monthName = $Matches[2].ToLowerInvariant()
+        $year = [int]$Matches[3]
+
+        if ($monthMap.ContainsKey($monthName)) {
+            try {
+                return [datetime]::new($year, [int]$monthMap[$monthName], $day)
+            } catch {
+                return $null
+            }
+        }
+    }
+
+    if ($candidate -match '(?<!\d)(\d{1,2})[\./-](\d{1,2})[\./-](\d{4})(?!\d)') {
+        try {
+            return [datetime]::new([int]$Matches[3], [int]$Matches[2], [int]$Matches[1])
+        } catch {
+            return $null
+        }
+    }
+
+    return $null
+}
+
+function Resolve-DecisionDate {
+    param(
+        [hashtable]$FileInfo
+    )
+
+    $formattedDate = Format-DecisionDate -DateValue $FileInfo.DecisionDate
+    if (-not [string]::IsNullOrWhiteSpace($formattedDate)) {
+        return @{ Value = $formattedDate; Source = 'API metadata' }
+    }
+
+    $dateCandidates = @(
+        @{ Source = 'DocumentTitle'; Value = $FileInfo.DocumentTitle },
+        @{ Source = 'Filename'; Value = $FileInfo.Filename },
+        @{ Source = 'OriginalFilename'; Value = $FileInfo.OriginalFilename }
+    )
+
+    foreach ($candidate in $dateCandidates) {
+        $parsed = Get-DecisionDateFromText -Text ([string]$candidate.Value)
+        if ($null -ne $parsed) {
+            return @{ Value = $parsed.ToString('yyyy-MM-dd'); Source = "filnavn/$($candidate.Source)" }
+        }
+    }
+
+    return @{ Value = ''; Source = 'ikke fundet' }
 }
 
 function Format-DecisionDate {

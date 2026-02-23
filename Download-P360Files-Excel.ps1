@@ -238,9 +238,13 @@ function Convert-DownloadedFileToMarkdown {
     }
 
     if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate)) {
-        $decisionDateFromOriginalFilename = Get-DecisionDateFromFilename -Filename ([string]$FileInfo.OriginalFilename)
-        if (-not [string]::IsNullOrWhiteSpace($decisionDateFromOriginalFilename)) {
-            $FileInfo.DecisionDate = $decisionDateFromOriginalFilename
+        $filenameCandidates = @([string]$FileInfo.OriginalFilename, [string]$FileInfo.Filename)
+        foreach ($filenameCandidate in $filenameCandidates) {
+            $decisionDateFromFilename = Get-DecisionDateFromFilename -Filename $filenameCandidate
+            if (-not [string]::IsNullOrWhiteSpace($decisionDateFromFilename)) {
+                $FileInfo.DecisionDate = $decisionDateFromFilename
+                break
+            }
         }
     }
 
@@ -958,6 +962,7 @@ Write-Host ""
                 CaseNumber = $caseNumber
                 DocumentRecno = ""
                 Filename = $file.Name
+                OriginalFilename = $file.Name
                 DecisionDate = (Get-DecisionDateFromText -Text $basename)
             }
         }

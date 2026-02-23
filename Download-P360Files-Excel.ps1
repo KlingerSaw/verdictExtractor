@@ -224,15 +224,23 @@ function Get-DecisionDateFromText {
         'december' = '12'
     }
 
-    # Example: "Afgørelse af 27. juni 2022" -> "2022-06-27"
-    if ($Text -match '(?i)Afg.relse\s+af\s+(\d{1,2})\.\s*([[:alpha:]æøåÆØÅ]+)\s+(\d{4})') {
-        $day = [int]$Matches[1]
-        $monthName = $Matches[2].ToLowerInvariant()
-        $year = $Matches[3]
+    $normalizedText = ([string]$Text -replace '[   ]', ' ' -replace '\s+', ' ').Trim()
+    $patterns = @(
+        '(?i)Afg\S*?\s+af\s+den\s+(\d{1,2})\s*[\.-]?\s*([\p{L}]+)\.?\s+(\d{4})',
+        '(?i)Afg\S*?\s+af\s+(\d{1,2})\s*[\.-]?\s*([\p{L}]+)\.?\s+(\d{4})',
+        '(?i)(?<!\d)(\d{1,2})\s*[\._\-/ ]+\s*([\p{L}]+)\.?\s+(\d{4})(?!\d)'
+    )
 
-        if ($monthMap.ContainsKey($monthName)) {
-            $month = $monthMap[$monthName]
-            return "{0}-{1}-{2:00}" -f $year, $month, $day
+    foreach ($pattern in $patterns) {
+        if ($normalizedText -match $pattern) {
+            $day = [int]$Matches[1]
+            $monthName = $Matches[2].ToLowerInvariant().TrimEnd('.')
+            $year = $Matches[3]
+
+            if ($monthMap.ContainsKey($monthName)) {
+                $month = $monthMap[$monthName]
+                return "{0}-{1}-{2:00}" -f $year, $month, $day
+            }
         }
     }
 
@@ -253,30 +261,19 @@ function Get-DecisionDateFromFilename {
         return ""
     }
 
-    $monthMap = @{
-        'januar' = '01'
-        'februar' = '02'
-        'marts' = '03'
-        'april' = '04'
-        'maj' = '05'
-        'juni' = '06'
-        'juli' = '07'
-        'august' = '08'
-        'september' = '09'
-        'oktober' = '10'
-        'november' = '11'
-        'december' = '12'
+    $dateFromText = Get-DecisionDateFromText -Text $nameOnly
+    if (-not [string]::IsNullOrWhiteSpace($dateFromText)) {
+        return $dateFromText
     }
 
-    # Eksempel: "4 december 2019" -> "2019-12-04"
-    if ($nameOnly -match '(?i)(?<!\d)(\d{1,2})[\.\s_-]+([[:alpha:]æøåÆØÅ]+)[\.\s_-]+(\d{4})(?!\d)') {
+    # Eksempel: "04-12-2019" -> "2019-12-04"
+    if ($nameOnly -match '(?<!\d)(\d{1,2})[\./-](\d{1,2})[\./-](\d{4})(?!\d)') {
         $day = [int]$Matches[1]
-        $monthName = $Matches[2].ToLowerInvariant()
-        $year = $Matches[3]
+        $month = [int]$Matches[2]
+        $year = [int]$Matches[3]
 
-        if ($monthMap.ContainsKey($monthName)) {
-            $month = $monthMap[$monthName]
-            return "{0}-{1}-{2:00}" -f $year, $month, $day
+        if ($day -ge 1 -and $day -le 31 -and $month -ge 1 -and $month -le 12) {
+            return "{0}-{1:00}-{2:00}" -f $year, $month, $day
         }
     }
 

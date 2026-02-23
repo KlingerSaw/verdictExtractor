@@ -99,7 +99,7 @@ function Build-MarkdownHeader {
     }
 
     $caseNumber = if ($FileInfo.CaseNumber) { [string]$FileInfo.CaseNumber } else { "" }
-    $decisionDate = if ($FileInfo.DecisionDate) { [string]$FileInfo.DecisionDate } else { "" }
+    $decisionDate = Format-DecisionDate -DateValue $FileInfo.DecisionDate
     $docId = if ($FileInfo.DocumentRecno) { [string]$FileInfo.DocumentRecno } elseif ($recno) { [string]$recno } else { "" }
 
     $markdown = ""
@@ -109,6 +109,33 @@ function Build-MarkdownHeader {
     $markdown += "DokID: $docId`n"
     $markdown += "`n"
     return $markdown
+}
+
+function Format-DecisionDate {
+    param(
+        [object]$DateValue
+    )
+
+    if ($null -eq $DateValue) {
+        return ""
+    }
+
+    $rawDate = [string]$DateValue
+    if ([string]::IsNullOrWhiteSpace($rawDate)) {
+        return ""
+    }
+
+    $trimmedDate = $rawDate.Trim()
+    if ($trimmedDate -match '^\d{4}-\d{2}-\d{2}T00:00:00(?:\.\d+)?$') {
+        return $trimmedDate.Substring(0, 10)
+    }
+
+    $parsedDate = $null
+    if ([datetime]::TryParse($trimmedDate, [ref]$parsedDate)) {
+        return $parsedDate.ToString('yyyy-MM-dd')
+    }
+
+    return $trimmedDate
 }
 
 function Convert-DownloadedFileToMarkdown {

@@ -138,6 +138,45 @@ function Format-DecisionDate {
     return $trimmedDate
 }
 
+function Get-DecisionDateFromDocName {
+    param(
+        [string]$DocName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($DocName)) {
+        return ""
+    }
+
+    $monthMap = @{
+        'januar' = '01'
+        'februar' = '02'
+        'marts' = '03'
+        'april' = '04'
+        'maj' = '05'
+        'juni' = '06'
+        'juli' = '07'
+        'august' = '08'
+        'september' = '09'
+        'oktober' = '10'
+        'november' = '11'
+        'december' = '12'
+    }
+
+    # Example: "Afgørelse af 27. juni 2022" -> "2022-06-27"
+    if ($DocName -match '(?i)Afg.relse\s+af\s+(\d{1,2})\.\s*([[:alpha:]æøåÆØÅ]+)\s+(\d{4})') {
+        $day = [int]$Matches[1]
+        $monthName = $Matches[2].ToLowerInvariant()
+        $year = $Matches[3]
+
+        if ($monthMap.ContainsKey($monthName)) {
+            $month = $monthMap[$monthName]
+            return "{0}-{1}-{2:00}" -f $year, $month, $day
+        }
+    }
+
+    return ""
+}
+
 function Convert-DownloadedFileToMarkdown {
     param(
         [hashtable]$FileInfo,
@@ -556,11 +595,14 @@ foreach ($row in $data) {
     }
     $klassifikation = if ($row.'ToClassification.Code') { $row.'ToClassification.Code' } else { "" }
     $caseTitle = if ($row.CaseNameAndDescription) { $row.CaseNameAndDescription } else { "" }
-    $decisionDate = ""
-    foreach ($key in @('DocumentDate', 'DocumentDate(D)(P)', 'CreatedDate', 'CreatedDate(D)(P)', 'JournalDate', 'JournalDate(D)(P)', 'Date')) {
-        if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
-            $decisionDate = [string]$row.$key
-            break
+    # Prefer date parsed from DocName (e.g. "Afgørelse af 27. juni 2022")
+    $decisionDate = Get-DecisionDateFromDocName -DocName $docName
+    if ([string]::IsNullOrWhiteSpace($decisionDate)) {
+        foreach ($key in @('DocumentDate', 'DocumentDate(D)(P)', 'CreatedDate', 'CreatedDate(D)(P)', 'JournalDate', 'JournalDate(D)(P)', 'Date')) {
+            if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
+                $decisionDate = [string]$row.$key
+                break
+            }
         }
     }
     

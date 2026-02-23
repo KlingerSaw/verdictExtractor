@@ -138,12 +138,12 @@ function Format-DecisionDate {
     return $trimmedDate
 }
 
-function Get-DecisionDateFromDocName {
+function Get-DecisionDateFromText {
     param(
-        [string]$DocName
+        [string]$Text
     )
 
-    if ([string]::IsNullOrWhiteSpace($DocName)) {
+    if ([string]::IsNullOrWhiteSpace($Text)) {
         return ""
     }
 
@@ -163,7 +163,7 @@ function Get-DecisionDateFromDocName {
     }
 
     # Example: "Afgørelse af 27. juni 2022" -> "2022-06-27"
-    if ($DocName -match '(?i)Afg.relse\s+af\s+(\d{1,2})\.\s*([[:alpha:]æøåÆØÅ]+)\s+(\d{4})') {
+    if ($Text -match '(?i)Afg.relse\s+af\s+(\d{1,2})\.\s*([[:alpha:]æøåÆØÅ]+)\s+(\d{4})') {
         $day = [int]$Matches[1]
         $monthName = $Matches[2].ToLowerInvariant()
         $year = $Matches[3]
@@ -595,8 +595,14 @@ foreach ($row in $data) {
     }
     $klassifikation = if ($row.'ToClassification.Code') { $row.'ToClassification.Code' } else { "" }
     $caseTitle = if ($row.CaseNameAndDescription) { $row.CaseNameAndDescription } else { "" }
-    # Prefer date parsed from DocName (e.g. "Afgørelse af 27. juni 2022")
-    $decisionDate = Get-DecisionDateFromDocName -DocName $docName
+    # Prefer date parsed from title or filename text (e.g. "Afgørelse af 27. juni 2022")
+    $decisionDate = Get-DecisionDateFromText -Text $docName
+    if ([string]::IsNullOrWhiteSpace($decisionDate)) {
+        $decisionDate = Get-DecisionDateFromText -Text $fileName
+    }
+    if ([string]::IsNullOrWhiteSpace($decisionDate)) {
+        $decisionDate = Get-DecisionDateFromText -Text $fileNameOrComment
+    }
     if ([string]::IsNullOrWhiteSpace($decisionDate)) {
         foreach ($key in @('DocumentDate', 'DocumentDate(D)(P)', 'CreatedDate', 'CreatedDate(D)(P)', 'JournalDate', 'JournalDate(D)(P)', 'Date')) {
             if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
@@ -872,7 +878,7 @@ Write-Host ""
                 CaseNumber = $caseNumber
                 DocumentRecno = ""
                 Filename = $file.Name
-                DecisionDate = ""
+                DecisionDate = (Get-DecisionDateFromText -Text $basename)
             }
         }
         

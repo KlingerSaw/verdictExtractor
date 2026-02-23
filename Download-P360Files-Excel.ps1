@@ -149,7 +149,7 @@ function Format-DecisionDate {
 
     foreach ($culture in $cultures) {
         foreach ($knownDateFormat in $knownDateFormats) {
-            $parsedDate = $null
+            [datetime]$parsedDate = [datetime]::MinValue
             if ([datetime]::TryParseExact($trimmedDate, $knownDateFormat, $culture, $dateStyles, [ref]$parsedDate)) {
                 return $parsedDate.ToString('yyyy-MM-dd')
             }
@@ -157,7 +157,7 @@ function Format-DecisionDate {
     }
 
     foreach ($culture in $cultures) {
-        $parsedDate = $null
+        [datetime]$parsedDate = [datetime]::MinValue
         if ([datetime]::TryParse($trimmedDate, $culture, $dateStyles, [ref]$parsedDate)) {
             return $parsedDate.ToString('yyyy-MM-dd')
         }

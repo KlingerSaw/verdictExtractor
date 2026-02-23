@@ -160,21 +160,16 @@ function Build-MarkdownHeader {
         [string]$FormatLabel
     )
 
-    $documentUrl = $FileInfo.DocumentLink
-
-    $displayTitle = if ($FileInfo.Filename) {
-        [System.IO.Path]::GetFileNameWithoutExtension([string]$FileInfo.Filename)
-    } elseif ($FileInfo.DocumentTitle) {
-        [string]$FileInfo.DocumentTitle
-    } else {
-        ""
-    }
+    $documentUrl = if ($FileInfo.DocumentLink) { [string]$FileInfo.DocumentLink } else { "" }
+    $caseNumber = if ($FileInfo.CaseNumber) { [string]$FileInfo.CaseNumber } else { "" }
+    $decisionDate = if ($FileInfo.DecisionDate) { [string]$FileInfo.DecisionDate } else { "" }
+    $docId = if ($FileInfo.DocumentRecno) { [string]$FileInfo.DocumentRecno } else { "" }
 
     $markdown = ""
-    $markdown += "$displayTitle`n"
-    if ($documentUrl) {
-        $markdown += "[Dokumentkort]($documentUrl)`n"
-    }
+    $markdown += "Sagsnummer: $caseNumber`n"
+    $markdown += "Afgørelsesdato: $decisionDate`n"
+    $markdown += "Dokumentkort: $documentUrl`n"
+    $markdown += "DokID: $docId`n"
     $markdown += "`n"
     return $markdown
 }
@@ -585,6 +580,10 @@ foreach ($doc in $allDocuments) {
     $caseRecno = $doc.CaseRecno
     $caseTitle = if ($doc.CaseNameAndDescription) { $doc.CaseNameAndDescription } else { "" }
     $klassifikation = if ($doc.AccessCodeCode) { $doc.AccessCodeCode } else { "" }
+    $decisionDate = if ($doc.DocumentDate) { [string]$doc.DocumentDate }
+                    elseif ($doc.CreatedDate) { [string]$doc.CreatedDate }
+                    elseif ($doc.JournalDate) { [string]$doc.JournalDate }
+                    else { "" }
 
     # Build P360 links
     $documentLink = "$downloadBaseUrl/locator/DMS/Document/Details/Simplified/2?module=Document&subtype=2&recno=$docRecno"
@@ -701,6 +700,7 @@ foreach ($doc in $allDocuments) {
                 CaseRecno = $caseRecno
                 DocumentLink = $documentLink
                 CaseLink = $caseLink
+                DecisionDate = $decisionDate
             }
         }
     } else {
@@ -810,10 +810,11 @@ foreach ($file in $filesToDownload) {
             DocumentTitle = $file.DocumentTitle
             DocumentNumber = $file.DocumentNumber
             CaseNumber = $file.CaseNumber
-                DocumentLink = $file.DocumentLink
-                CaseLink = $file.CaseLink
+            DocumentLink = $file.DocumentLink
+            CaseLink = $file.CaseLink
             FileRecno = $file.FileRecno
             DocumentRecno = $file.DocumentRecno
+            DecisionDate = $file.DecisionDate
         }
 
         Write-Host "    [*] Konverterer straks til markdown..." -ForegroundColor DarkGray
@@ -877,6 +878,7 @@ Write-Host ""
                 DocumentLink = ""
                 CaseLink = ""
                 FileRecno = ""
+                DecisionDate = ""
             }
         }
 

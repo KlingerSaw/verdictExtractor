@@ -283,6 +283,39 @@ function Get-DecisionDateFromFilename {
     return ""
 }
 
+function Resolve-DecisionDateWithSource {
+    param(
+        [hashtable]$FileInfo,
+        [string]$MarkdownBody = ""
+    )
+
+    $candidateSources = @(
+        @{ Source = 'fra metadata'; Value = [string]$FileInfo.DecisionDate },
+        @{ Source = 'fra originalt filnavn'; Value = Get-DecisionDateFromFilename -Filename ([string]$FileInfo.OriginalFilename) },
+        @{ Source = 'fra lokalt filnavn'; Value = Get-DecisionDateFromFilename -Filename ([string]$FileInfo.Filename) },
+        @{ Source = 'fra dokumenttitel'; Value = Get-DecisionDateFromText -Text ([string]$FileInfo.Title) },
+        @{ Source = 'fra filnavnstekst'; Value = Get-DecisionDateFromText -Text ([string]$FileInfo.Filename) }
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($MarkdownBody)) {
+        $candidateSources += @{ Source = 'fra dokumenttekst'; Value = Get-DecisionDateFromText -Text $MarkdownBody }
+    }
+
+    foreach ($candidate in $candidateSources) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate.Value)) {
+            return @{
+                DecisionDate = $candidate.Value
+                Source = $candidate.Source
+            }
+        }
+    }
+
+    return @{
+        DecisionDate = ""
+        Source = 'ikke fundet'
+    }
+}
+
 function Convert-DownloadedFileToMarkdown {
     param(
         [hashtable]$FileInfo,
@@ -299,27 +332,8 @@ function Convert-DownloadedFileToMarkdown {
         return $true
     }
 
-    if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate)) {
-        $filenameCandidates = @([string]$FileInfo.OriginalFilename, [string]$FileInfo.Filename)
-        foreach ($filenameCandidate in $filenameCandidates) {
-            $decisionDateFromFilename = Get-DecisionDateFromFilename -Filename $filenameCandidate
-            if (-not [string]::IsNullOrWhiteSpace($decisionDateFromFilename)) {
-                $FileInfo.DecisionDate = $decisionDateFromFilename
-                break
-            }
-        }
-    }
-
-    if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate)) {
-        $titleCandidates = @([string]$FileInfo.Title, [string]$FileInfo.Filename, [string]$baseName)
-        foreach ($candidate in $titleCandidates) {
-            $decisionDateFromName = Get-DecisionDateFromText -Text $candidate
-            if (-not [string]::IsNullOrWhiteSpace($decisionDateFromName)) {
-                $FileInfo.DecisionDate = $decisionDateFromName
-                break
-            }
-        }
-    }
+    $initialDateResolution = Resolve-DecisionDateWithSource -FileInfo $FileInfo
+    $FileInfo.DecisionDate = $initialDateResolution.DecisionDate
 
     $markdownBody = ""
 
@@ -371,14 +385,32 @@ function Convert-DownloadedFileToMarkdown {
         }
     }
 
-    if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate) -and -not [string]::IsNullOrWhiteSpace($markdownBody)) {
-        $decisionDateFromBody = Get-DecisionDateFromText -Text $markdownBody
-        if (-not [string]::IsNullOrWhiteSpace($decisionDateFromBody)) {
-            $FileInfo.DecisionDate = $decisionDateFromBody
-        }
+    $finalDateResolution = Resolve-DecisionDateWithSource -FileInfo $FileInfo -MarkdownBody $markdownBody
+    $FileInfo.DecisionDate = $finalDateResolution.DecisionDate
+
+    $filenameDate = Get-DecisionDateFromFilename -Filename ([string]$FileInfo.Filename)
+    if ([string]::IsNullOrWhiteSpace($filenameDate) -and -not [string]::IsNullOrWhiteSpace([string]$FileInfo.OriginalFilename)) {
+        $filenameDate = Get-DecisionDateFromFilename -Filename ([string]$FileInfo.OriginalFilename)
     }
 
-    $markdown = Build-MarkdownHeader -FileInfo $FileInfo -FormatLabel $FileInfo.Extension
+    if ([string]::IsNullOrWhiteSpace($filenameDate)) {
+        Write-Host "    [Dato] Filnavn: Ingen tydelig dato fundet" -ForegroundColor DarkYellow
+    } else {
+        Write-Host "    [Dato] Filnavn: Fundet dato-kandidat -> $filenameDate" -ForegroundColor DarkCyan
+    }
+
+    if ([string]::IsNullOrWhiteSpace([string]$FileInfo.DecisionDate)) {
+        Write-Host "    [Dato] Tolkning: Ingen afgørelsesdato kunne fastsættes" -ForegroundColor DarkYellow
+    } else {
+        Write-Host "    [Dato] Tolkning: Bruger $($FileInfo.DecisionDate) ($($finalDateResolution.Source))" -ForegroundColor DarkCyan
+    }
+
+    $headerPreview = Build-MarkdownHeader -FileInfo $FileInfo -FormatLabel $FileInfo.Extension
+    $bodyLength = if ($markdownBody) { $markdownBody.Length } else { 0 }
+    Write-Host "    [MD] Gemmer header: Sagsnummer='$($FileInfo.CaseNumber)', Afgørelsesdato='$($FileInfo.DecisionDate)', DokID='$($FileInfo.DocumentRecno)'" -ForegroundColor DarkGray
+    Write-Host "    [MD] Gemmer indhold: $bodyLength tegn dokumenttekst" -ForegroundColor DarkGray
+
+    $markdown = $headerPreview
     $markdown += $markdownBody
 
     $utf8 = New-Object System.Text.UTF8Encoding $true

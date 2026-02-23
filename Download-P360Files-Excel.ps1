@@ -130,12 +130,74 @@ function Format-DecisionDate {
         return $trimmedDate.Substring(0, 10)
     }
 
-    $parsedDate = $null
-    if ([datetime]::TryParse($trimmedDate, [ref]$parsedDate)) {
-        return $parsedDate.ToString('yyyy-MM-dd')
+    $cultures = @(
+        [System.Globalization.CultureInfo]::GetCultureInfo('da-DK'),
+        [System.Globalization.CultureInfo]::InvariantCulture
+    )
+
+    $dateStyles = [System.Globalization.DateTimeStyles]::AllowWhiteSpaces
+    $knownDateFormats = @(
+        'yyyy-MM-dd',
+        'yyyy-MM-ddTHH:mm:ss',
+        'yyyy-MM-ddTHH:mm:ss.fff',
+        'dd-MM-yyyy',
+        'dd/MM/yyyy',
+        'd/M/yyyy',
+        'dd.MM.yyyy',
+        'd.M.yyyy'
+    )
+
+    foreach ($culture in $cultures) {
+        $parsedDate = $null
+        if ([datetime]::TryParseExact($trimmedDate, $knownDateFormats, $culture, $dateStyles, [ref]$parsedDate)) {
+            return $parsedDate.ToString('yyyy-MM-dd')
+        }
+    }
+
+    foreach ($culture in $cultures) {
+        $parsedDate = $null
+        if ([datetime]::TryParse($trimmedDate, $culture, $dateStyles, [ref]$parsedDate)) {
+            return $parsedDate.ToString('yyyy-MM-dd')
+        }
     }
 
     return $trimmedDate
+}
+
+function Get-DecisionDateFromRow {
+    param(
+        [object]$Row
+    )
+
+    if ($null -eq $Row) {
+        return ""
+    }
+
+    $decisionDateCandidateKeys = @(
+        'DecisionDate',
+        'DecisionDate(D)(P)',
+        'Afgørelsesdato',
+        'Afgørelsesdato(D)(P)',
+        'DocumentDate',
+        'DocumentDate(D)(P)',
+        'CreatedDate',
+        'CreatedDate(D)(P)',
+        'JournalDate',
+        'JournalDate(D)(P)',
+        'Date',
+        'Dato'
+    )
+
+    foreach ($key in $decisionDateCandidateKeys) {
+        if ($Row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$Row.$key)) {
+            $formattedDate = Format-DecisionDate -DateValue $Row.$key
+            if (-not [string]::IsNullOrWhiteSpace($formattedDate)) {
+                return $formattedDate
+            }
+        }
+    }
+
+    return ""
 }
 
 function Get-DecisionDateFromText {
@@ -683,12 +745,7 @@ foreach ($row in $data) {
         $decisionDate = Get-DecisionDateFromText -Text $fileNameOrComment
     }
     if ([string]::IsNullOrWhiteSpace($decisionDate)) {
-        foreach ($key in @('DocumentDate', 'DocumentDate(D)(P)', 'CreatedDate', 'CreatedDate(D)(P)', 'JournalDate', 'JournalDate(D)(P)', 'Date')) {
-            if ($row.PSObject.Properties[$key] -and -not [string]::IsNullOrWhiteSpace([string]$row.$key)) {
-                $decisionDate = [string]$row.$key
-                break
-            }
-        }
+        $decisionDate = Get-DecisionDateFromRow -Row $row
     }
     
     # Document-level validation

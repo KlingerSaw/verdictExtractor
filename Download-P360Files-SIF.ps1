@@ -414,6 +414,15 @@ Write-Host "  [2] Konverter eksisterende filer til markdown (skip download)" -Fo
 $modeChoice = Read-Host "Vaelg (1-2)"
 $convertOnly = ($modeChoice -eq '2')
 
+$runDateFolderName = Get-Date -Format 'yyyy-MM-dd'
+$activeOutputDir = $OutputDir
+$activeMarkdownDir = $MarkdownDir
+
+if (-not $convertOnly) {
+    $activeOutputDir = Join-Path $OutputDir $runDateFolderName
+    $activeMarkdownDir = Join-Path $MarkdownDir $runDateFolderName
+}
+
 if ($convertOnly) {
     Write-Host ""
     Write-Host "[*] Mode: KUN KONVERTERING (springer download over)" -ForegroundColor Yellow
@@ -515,9 +524,19 @@ if (-not (Test-Path $OutputDir)) {
     Write-Host "[+] Oprettet output mappe: $OutputDir" -ForegroundColor Green
 }
 
+if (-not (Test-Path $activeOutputDir)) {
+    New-Item -ItemType Directory -Path $activeOutputDir | Out-Null
+    Write-Host "[+] Oprettet output undermappe: $activeOutputDir" -ForegroundColor Green
+}
+
 if (-not (Test-Path $MarkdownDir)) {
     New-Item -ItemType Directory -Path $MarkdownDir | Out-Null
     Write-Host "[+] Oprettet markdown mappe: $MarkdownDir" -ForegroundColor Green
+}
+
+if (-not (Test-Path $activeMarkdownDir)) {
+    New-Item -ItemType Directory -Path $activeMarkdownDir | Out-Null
+    Write-Host "[+] Oprettet markdown undermappe: $activeMarkdownDir" -ForegroundColor Green
 }
 
 $pdfToTextPath = Resolve-PdfToTextPath
@@ -854,6 +873,40 @@ if ($MaxFilesToProcess -gt 0 -and $filesToDownload.Count -gt $MaxFilesToProcess)
     Write-Host ""
 }
 
+if (-not $convertOnly -and $filesToDownload.Count -gt 0) {
+    $existingDownloadedNames = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
+    $existingFiles = Get-ChildItem -Path $OutputDir -File -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.Extension -match '\.(pdf|docx?|doc)$' }
+
+    foreach ($existingFile in $existingFiles) {
+        $null = $existingDownloadedNames.Add($existingFile.Name)
+    }
+
+    $alreadyDownloadedCount = 0
+    $newFilesToDownload = @()
+
+    foreach ($file in $filesToDownload) {
+        $caseFilename = Get-CaseBasedFilename -FileId $file.FileRecno -CaseNumber $file.CaseNumber -Title $file.DocumentTitle -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
+        $safeFilename = $caseFilename.SafeFilename
+
+        if ($existingDownloadedNames.Contains($safeFilename)) {
+            $alreadyDownloadedCount++
+            continue
+        }
+
+        $file.ResolvedSafeFilename = $safeFilename
+        $file.DisplayTargetName = $caseFilename.DisplayName
+        $file.DisplayCaseNumber = $caseFilename.DisplayCaseNumber
+        $newFilesToDownload += $file
+    }
+
+    if ($alreadyDownloadedCount -gt 0) {
+        Write-Host "[*] Springer $alreadyDownloadedCount filer over, da de allerede er hentet" -ForegroundColor Yellow
+    }
+
+    $filesToDownload = $newFilesToDownload
+}
+
 if ($filesToDownload.Count -eq 0) {
     Write-Host "INGEN filer at hente!" -ForegroundColor Red
     pause
@@ -879,11 +932,10 @@ foreach ($file in $filesToDownload) {
     $total = $filesToDownload.Count
 
     # Resolve case-based filename before save
-    $caseFilename = Get-CaseBasedFilename -FileId $file.FileRecno -CaseNumber $file.CaseNumber -Title $file.DocumentTitle -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL
-    $safeFilename = $caseFilename.SafeFilename
-    $displayTargetName = $caseFilename.DisplayName
-    $displayCaseNumber = $caseFilename.DisplayCaseNumber
-    $outputPath = Join-Path $OutputDir $safeFilename
+    $safeFilename = if ($file.ResolvedSafeFilename) { [string]$file.ResolvedSafeFilename } else { (Get-CaseBasedFilename -FileId $file.FileRecno -CaseNumber $file.CaseNumber -Title $file.DocumentTitle -Format $file.Format -FallbackTitle $file.Filename -SourceUrl $file.URL).SafeFilename }
+    $displayTargetName = if ($file.DisplayTargetName) { [string]$file.DisplayTargetName } else { $safeFilename }
+    $displayCaseNumber = if ($file.DisplayCaseNumber) { [string]$file.DisplayCaseNumber } else { [string]$file.CaseNumber }
+    $outputPath = Join-Path $activeOutputDir $safeFilename
 
     Write-Host "v [$fileNum/$total] '$safeFilename' -> Henter..." -ForegroundColor Cyan
     Write-Host "    URL: $($file.URL)" -ForegroundColor DarkGray
@@ -934,7 +986,7 @@ foreach ($file in $filesToDownload) {
         }
 
         Write-Host "    [*] Konverterer straks til markdown..." -ForegroundColor DarkGray
-        $null = Convert-DownloadedFileToMarkdown -FileInfo $downloadedFiles[-1] -MarkdownDir $MarkdownDir -PdfToTextPath $pdfToTextPath
+        $null = Convert-DownloadedFileToMarkdown -FileInfo $downloadedFiles[-1] -MarkdownDir $activeMarkdownDir -PdfToTextPath $pdfToTextPath
 
     } catch {
         Write-Host "x [$fileNum/$total] '$($file.Filename)' -> FEJL ($($_.Exception.Message))" -ForegroundColor Red
@@ -1038,7 +1090,7 @@ if ($convertOnly -and $downloadedFiles.Count -gt 0) {
         Write-Host "  [$fileNum/$total] $($file.Filename)" -ForegroundColor Cyan
         try {
             # Convert flow: gå fil-for-fil, byg metadata/links først, lav markdown, og fortsæt til næste
-            $null = Convert-DownloadedFileToMarkdown -FileInfo $file -MarkdownDir $MarkdownDir -PdfToTextPath $pdfToTextPath
+            $null = Convert-DownloadedFileToMarkdown -FileInfo $file -MarkdownDir $activeMarkdownDir -PdfToTextPath $pdfToTextPath
             $converted++
 
         } catch {
@@ -1073,6 +1125,12 @@ foreach ($file in $downloadedFiles) {
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($file.Filename)
     $markdownFile = "$baseName.md"
 
+    $downloadRelativePath = if ($convertOnly) {
+        [System.IO.Path]::Combine("..", "prod_downloads", $file.Filename).Replace('\\', '/')
+    } else {
+        [System.IO.Path]::Combine("..", "..", "prod_downloads", $runDateFolderName, $file.Filename).Replace('\\', '/')
+    }
+
     $indexContent += @"
 
 ### $($file.DocumentTitle)
@@ -1081,13 +1139,13 @@ foreach ($file in $downloadedFiles) {
 - **Sags nummer:** $($file.CaseNumber)
 - **Fil:** ``$($file.Filename)`` ($($file.Format))
 - **P360 Link:** [Dokumentkort]($($file.DocumentLink))
-- **Lokal fil:** [``$($file.Filename)``](../prod_downloads/$($file.Filename))
+- **Lokal fil:** [``$($file.Filename)``]($downloadRelativePath)
 - **Markdown:** [``$markdownFile``](./$markdownFile)
 
 "@
 }
 
-$indexPath = Join-Path $MarkdownDir "INDEXPROD.md"
+$indexPath = Join-Path $activeMarkdownDir "INDEXPROD.md"
 $utf8 = New-Object System.Text.UTF8Encoding $true
 [System.IO.File]::WriteAllText($indexPath, (Normalize-MarkdownText -Text $indexContent), $utf8)
 
@@ -1095,13 +1153,13 @@ Write-Host "[+] Markdown index oprettet: $indexPath" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "Filer gemt i:" -ForegroundColor Cyan
-Write-Host "  Downloads: $OutputDir" -ForegroundColor Cyan
+Write-Host "  Downloads: $activeOutputDir" -ForegroundColor Cyan
 Write-Host "  Index: $indexPath" -ForegroundColor Cyan
 Write-Host ""
 
 $openFolder = Read-Host "Aaben markdown mappe? (Y/N)"
 if ($openFolder -eq 'Y' -or $openFolder -eq 'y') {
-    Invoke-Item $MarkdownDir
+    Invoke-Item $activeMarkdownDir
 }
 
 Stop-LogTranscript

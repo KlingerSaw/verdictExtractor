@@ -283,10 +283,10 @@ function Format-DecisionDate {
         return $trimmedDate.Substring(0, 10)
     }
 
-    $parsedDate = $null
-    if ([datetime]::TryParse($trimmedDate, [ref]$parsedDate)) {
+    try {
+        $parsedDate = Get-Date -Date $trimmedDate -ErrorAction Stop
         return $parsedDate.ToString('yyyy-MM-dd')
-    }
+    } catch {}
 
     return $trimmedDate
 }
@@ -423,8 +423,14 @@ if ($convertOnly) {
 if ($MaxFilesToProcess -le 0) {
     $maxFilesInput = Read-Host "Maks antal filer at behandle? (tryk Enter for alle)"
     if (-not [string]::IsNullOrWhiteSpace($maxFilesInput)) {
-        $parsedMaxFiles = 0
-        if ([int]::TryParse($maxFilesInput.Trim(), [ref]$parsedMaxFiles) -and $parsedMaxFiles -gt 0) {
+        $trimmedMaxFilesInput = $maxFilesInput.Trim()
+        if ($trimmedMaxFilesInput -match '^\d+$') {
+            $parsedMaxFiles = [int]$trimmedMaxFilesInput
+        } else {
+            $parsedMaxFiles = 0
+        }
+
+        if ($parsedMaxFiles -gt 0) {
             $MaxFilesToProcess = $parsedMaxFiles
         } else {
             Write-Host "[!] Ugyldigt antal - bruger alle filer" -ForegroundColor Yellow
@@ -855,13 +861,6 @@ if ($filesToDownload.Count -eq 0) {
     exit 0
 }
 
-$confirm = Read-Host "Start download? (Y/N)"
-if ($confirm -ne 'Y' -and $confirm -ne 'y') {
-    Write-Host "Afbrudt" -ForegroundColor Yellow
-    Stop-LogTranscript
-    exit 0
-}
-
 Write-Host ""
 Write-Host "====================================================================" -ForegroundColor Cyan
 Write-Host " DOWNLOADER FILER" -ForegroundColor Cyan
@@ -1016,8 +1015,9 @@ Write-Host ""
     Write-Host ""
 }
 
-# Convert files to markdown
-if ($downloadedFiles.Count -gt 0) {
+# Convert files to markdown (kun i convert-only mode,
+# da download mode allerede konverterer loebende per fil)
+if ($convertOnly -and $downloadedFiles.Count -gt 0) {
     Write-Host ""
     Write-Host "====================================================================" -ForegroundColor Cyan
     Write-Host " KONVERTERER TIL MARKDOWN" -ForegroundColor Cyan

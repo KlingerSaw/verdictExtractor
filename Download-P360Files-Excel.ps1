@@ -904,12 +904,7 @@ if ($filesToDownload.Count -eq 0) {
     pause; Stop-LogTranscript; exit 0
 }
 
-$confirm = Read-Host "Start download? (Y/N)"
-if ($confirm -ne 'Y' -and $confirm -ne 'y') {
-    Write-Host "Afbrudt" -ForegroundColor Yellow
-    Stop-LogTranscript
-    exit 0
-}
+Write-Host "[+] Starter download automatisk" -ForegroundColor Green
 } # End if not convertOnly
 
 # Resolve pdftotext path once for all conversion flows
